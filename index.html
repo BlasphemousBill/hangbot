@@ -149,7 +149,11 @@
   .panel-head { display: none; }
   #overlayBackdrop { display: none; }
 
-  @media (max-width: 860px) {
+  /* the OR clause catches phones whose landscape width exceeds 860px
+     (e.g. Pro Max-sized models, ~926px) — without it they'd fall through
+     to the desktop 3-column layout with the full inline Categories list,
+     which is far taller than a short landscape screen and forces scrolling. */
+  @media (max-width: 860px), (max-height: 520px) and (orientation: landscape) {
     .layout { grid-template-columns: 1fr; justify-items: center; }
     /* grid items also default to min-width:auto (content-sized), which can
        push .side wider than its track before overflow-x:auto ever applies */
@@ -335,7 +339,7 @@
                 0 0 34px rgba(0,240,255,0.16), inset 0 0 70px rgba(164,92,255,0.10);
   }
   .stage svg { width: clamp(230px, 30vw, 430px); height: auto; }
-  @media (max-width: 860px) {
+  @media (max-width: 860px), (max-height: 520px) and (orientation: landscape) {
     /* sized off whichever axis is tighter right now (min of the two), so
        rotating the phone — width and height trading places — never leaves
        the board oversized for the shorter axis. Scoped to mobile only:
@@ -612,6 +616,44 @@
     .stage { padding: 8px 14px; }
     body { gap: 8px; padding-top: calc(8px + env(safe-area-inset-top)); }
     .pixeltitle { width: clamp(150px, 26vw, 300px); }
+    .titlebar { gap: 6px; }
+    .titlebar > svg { width: 50px; height: 58px; }
+
+    /* stacking board/word/status/keyboard top-to-bottom (the portrait
+       layout) is taller than a landscape phone screen and forces
+       scrolling. Placing the keyboard (with word/status above it) beside
+       the board instead keeps the whole game on screen at once — these
+       five elements are still plain siblings in the HTML, grid-area just
+       lets each one claim a cell without needing a wrapper div. */
+    .center {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-areas:
+        "board word"
+        "board status"
+        "board keys"
+        "board again";
+      align-items: center;
+      column-gap: 14px;
+      row-gap: 2px;
+      width: 100%;
+    }
+    .playrow { grid-area: board; }
+    .word { grid-area: word; }
+    .status { grid-area: status; min-height: 0; }
+    /* button widths below are normally vw-based (a share of the whole
+       viewport), but here the keyboard only owns the right column, not
+       the full width — left at vw sizing the widest row (10 keys) ran
+       past the column's actual edge. container-type turns .keyboard into
+       its own measuring stick, so cqw below means "% of this column",
+       not "% of the screen", the same fix used for long words earlier. */
+    .keyboard { grid-area: keys; gap: 3px; container-type: inline-size; }
+    .row { gap: 3px; }
+    button.key {
+      width: min(clamp(26px, 8vw, 44px), calc((100cqw - 9 * 3px) / 10));
+      height: clamp(24px, 9vh, 34px);
+    }
+    .again { grid-area: again; justify-self: center; }
   }
   /* installed app: no browser chrome, so use the full screen */
   @media (display-mode: standalone) {
