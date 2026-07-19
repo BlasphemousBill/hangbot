@@ -167,7 +167,11 @@
        the right); the leftover empty first column just reserves the same
        48px of space so the board stays centered instead of drifting right */
     .playrow { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; gap: 8px; }
-    .playrow .stage { grid-column: 2; }
+    /* justify-self:center overrides the grid default (stretch to fill the
+       column), which otherwise left the board's own box as wide as the
+       column even after its svg shrank — leaving it sitting flush left
+       inside that oversized box instead of centered. */
+    .playrow .stage { grid-column: 2; justify-self: center; }
     .edge { display: flex; flex-direction: column; gap: 8px; }
     .edge-right { grid-column: 3; align-items: flex-end; }
     .edgebtn {
@@ -331,6 +335,23 @@
                 0 0 34px rgba(0,240,255,0.16), inset 0 0 70px rgba(164,92,255,0.10);
   }
   .stage svg { width: clamp(230px, 30vw, 430px); height: auto; }
+  @media (max-width: 860px) {
+    /* sized off whichever axis is tighter right now (min of the two), so
+       rotating the phone — width and height trading places — never leaves
+       the board oversized for the shorter axis. Scoped to mobile only:
+       desktop always has height to spare, so it keeps the plain width-only
+       rule above unconstrained. Later, narrower breakpoints below only
+       need to override --wByWidth; --wByHeight already covers every
+       height, not just the ones an orientation media query happens to
+       match. Needs its own @media block here (rather than living in the
+       shared one near the top of the file) so it comes after — and so
+       wins the cascade over — the plain width rule right above. */
+    .stage svg {
+      --wByWidth: clamp(230px, 30vw, 430px);
+      --wByHeight: clamp(150px, 22vh, 240px);
+      width: min(var(--wByWidth), var(--wByHeight));
+    }
+  }
   .stage.shake { animation: shake 0.36s steps(4, end); }
   @keyframes shake {
     0%,100% { transform: translateX(0); }
@@ -577,7 +598,7 @@
        around 226px). Real phones also gain extra keyboard height from the
        pointer:coarse rule further down, which this test environment can't
        trigger to verify. */
-    .stage svg { width: clamp(185px, 57vw, 430px); }
+    .stage svg { --wByWidth: clamp(185px, 57vw, 430px); }
     .letter { --fit: min(clamp(30px, 9.4vw, 40px), calc((100cqw - (var(--n, 8) - 1) * var(--gap)) / var(--n, 8))); }
     /* keys must fit 10-across within the row's ~374px content width:
        10 x width + 9 x gap(~4.3px) <= 374  =>  width <= ~33.5px */
@@ -585,7 +606,9 @@
   }
 
   @media (max-height: 520px) and (orientation: landscape) {
-    .stage svg { width: clamp(150px, 22vh, 240px); }
+    /* no .stage svg rule here: the mobile block above's --wByHeight already
+       covers this (and every other short height at this width, not just
+       the ones this query happens to also match) */
     .stage { padding: 8px 14px; }
     body { gap: 8px; padding-top: calc(8px + env(safe-area-inset-top)); }
     .pixeltitle { width: clamp(150px, 26vw, 300px); }
