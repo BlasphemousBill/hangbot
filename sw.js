@@ -1,6 +1,6 @@
 /* Service worker: caches the whole game so it runs offline once installed.
    Bump CACHE when index.html changes to push an update to installed phones. */
-const CACHE = "hangbot-v12";
+const CACHE = "hangbot-v13";
 const ASSETS = [
   "./",
   "./index.html",

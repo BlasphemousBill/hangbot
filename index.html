@@ -693,11 +693,11 @@
        past the column's actual edge. container-type turns .keyboard into
        its own measuring stick, so cqw below means "% of this column",
        not "% of the screen", the same fix used for long words earlier. */
-    .keyboard { gap: 3px; container-type: inline-size; margin: auto 0; }
-    .row { gap: 3px; }
+    .keyboard { gap: 6px; container-type: inline-size; margin: auto 0; }
+    .row { gap: 6px; }
     button.key {
-      width: min(clamp(26px, 8vw, 44px), calc((100cqw - 9 * 3px) / 10));
-      height: clamp(24px, 9vh, 34px);
+      width: min(clamp(26px, 8vw, 44px), calc((100cqw - 9 * 6px) / 10));
+      height: clamp(26px, 10vh, 36px);
     }
   }
   /* installed app: no browser chrome, so use the full screen */
