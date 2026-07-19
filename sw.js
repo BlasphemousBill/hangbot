@@ -1,6 +1,6 @@
 /* Service worker: caches the whole game so it runs offline once installed.
    Bump CACHE when index.html changes to push an update to installed phones. */
-const CACHE = "hangbot-v7";
+const CACHE = "hangbot-v8";
 const ASSETS = [
   "./",
   "./index.html",
@@ -34,9 +34,12 @@ self.addEventListener("fetch", e => {
   if (req.method !== "GET") return;
 
   // Navigations: serve the cached shell so the app opens with no network.
+  // cache: "no-store" bypasses the browser's own HTTP cache (GitHub Pages
+  // sends a 10-minute max-age) so a bumped CACHE version is never masked by
+  // a stale response the browser hands back without even asking the network.
   if (req.mode === "navigate") {
     e.respondWith(
-      fetch(req)
+      fetch(req, { cache: "no-store" })
         .then(res => {
           const copy = res.clone();
           caches.open(CACHE).then(c => c.put("./index.html", copy));

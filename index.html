@@ -2295,8 +2295,25 @@ startGame();
 // Service workers only run over https:// or localhost — never file://,
 // so guard the call rather than throwing on a local double-click.
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  // An installed iPhone home-screen app never gets the natural "revisit a
+  // tab" moment browsers rely on to notice a new service worker in the
+  // background, so ask explicitly every time the app opens instead of
+  // waiting for the browser's own (up to 24h) automatic check.
+  const hadController = !!navigator.serviceWorker.controller;
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => { /* offline install unavailable */ });
+    navigator.serviceWorker.register("sw.js")
+      .then(reg => reg.update().catch(() => {}))
+      .catch(() => { /* offline install unavailable */ });
+  });
+  // Once a new worker actually takes over, reload so this open page picks
+  // up the new HTML/CSS/JS immediately instead of showing the old version
+  // until the next relaunch. Skipped on a page's very first-ever install,
+  // where "gaining a controller" isn't an update.
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || reloaded) return;
+    reloaded = true;
+    window.location.reload();
   });
 }
 
