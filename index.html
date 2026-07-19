@@ -129,6 +129,16 @@
   .side { display: flex; flex-direction: column; gap: 10px; }
   .side.right { align-items: stretch; }
 
+  /* ---- mobile toolbar + overlay panels ----
+     Categories/Stats/Settings sit inline in the sidebars on desktop. Below
+     860px there's no room for that without pushing the board and keyboard
+     off-screen, so they become bottom-sheet overlays opened from three
+     compact buttons instead. Hidden here so nothing shows on desktop;
+     the 860px query below is what actually turns them on. */
+  .toolbar { display: none; }
+  .panel-head { display: none; }
+  #overlayBackdrop { display: none; }
+
   @media (max-width: 860px) {
     .layout { grid-template-columns: 1fr; justify-items: center; }
     /* grid items also default to min-width:auto (content-sized), which can
@@ -137,30 +147,78 @@
     .center { order: -1; }
     .side.left { order: 0; }
     .side.right { order: 1; }
-    /* category chips scroll horizontally instead of wrapping into a tall
-       grid — that grid used to push the keyboard well below the fold */
-    .categories {
-      flex-direction: row !important;
-      flex-wrap: nowrap;
-      /* flex items default to min-width:auto (sized to their content), which
-         stops overflow-x:auto from ever kicking in and leaks the scroll onto
-         the whole page instead of staying inside this chip strip */
-      min-width: 0;
-      overflow-x: auto;
-      overscroll-behavior-x: contain;
-      -webkit-overflow-scrolling: touch;
-      scroll-snap-type: x proximity;
-      justify-content: flex-start;
-      padding: 2px 2px 5px;
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-      -webkit-mask-image: linear-gradient(to right, #000 92%, transparent);
-      mask-image: linear-gradient(to right, #000 92%, transparent);
+
+    .toolbar { display: flex; gap: 8px; width: 100%; max-width: 620px; }
+    .toolbtn {
+      position: relative;
+      flex: 1 1 0;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      padding: 10px 6px;
+      font-family: var(--px);
+      font-size: 0.56rem; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: var(--panel2);
+      border: 0; cursor: pointer;
+      box-shadow: inset -3px -3px 0 rgba(0,0,0,0.55), inset 3px 3px 0 rgba(255,255,255,0.07), 0 0 0 2px var(--edge);
     }
-    .categories::-webkit-scrollbar { display: none; }
-    button.cat { flex: 0 0 auto; scroll-snap-align: start; }
-    .streaks { flex-direction: row !important; justify-content: center; }
-    .streak { flex: 0 1 auto !important; }
+    .toolbtn:active { transform: translate(2px, 2px); }
+    .toolicon { font-size: 1.05rem; line-height: 1; }
+    .toolbadge {
+      position: absolute; top: 4px; right: 6px;
+      min-width: 14px; height: 14px; padding: 0 3px;
+      background: var(--yellow); color: #241a05;
+      font-size: 0.5rem; font-weight: 700;
+      display: none; align-items: center; justify-content: center;
+    }
+    .toolbadge.show { display: flex; }
+
+    #overlayBackdrop {
+      display: block;
+      position: fixed; inset: 0;
+      background: rgba(3, 2, 10, 0.72);
+      z-index: 44;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.18s;
+    }
+    #overlayBackdrop.show { opacity: 1; pointer-events: auto; }
+
+    /* the three secondary panels become bottom sheets, off-screen until opened */
+    .side.left, .streaks, .musicbox {
+      position: fixed;
+      left: 50%; bottom: 0;
+      transform: translate(-50%, 105%);
+      width: min(92vw, 480px);
+      max-height: 76vh;
+      z-index: 45;
+      overflow-y: auto;
+      transition: transform 0.22s ease;
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
+      box-shadow: 0 0 0 2px var(--edge), 0 -12px 34px rgba(0,0,0,0.55);
+    }
+    .side.left.open, .streaks.open, .musicbox.open { transform: translate(-50%, 0); }
+    .side.left, .streaks { background: var(--panel); }
+
+    .panel-head {
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0;
+      padding: 12px 14px;
+      background: var(--panel2);
+      box-shadow: 0 0 0 2px var(--edge);
+      font-size: 0.66rem; letter-spacing: 0.12em;
+      color: var(--ink); font-weight: 700;
+      z-index: 1;
+    }
+    .panel-close {
+      width: 26px; height: 26px;
+      background: var(--panel2); color: var(--ink);
+      border: 0; box-shadow: 0 0 0 2px var(--edge);
+      font-size: 0.85rem; cursor: pointer;
+    }
+    .panel-close:active { transform: translate(1px, 1px); }
+
+    .categories { padding: 10px 12px 14px; }
+    .streaks { padding: 0 14px 14px; }
   }
 
   /* ---- title ---- */
@@ -613,6 +671,7 @@
 <div class="layout">
 
   <aside class="side left">
+    <div class="panel-head"><span>Categories</span><button class="panel-close" data-close>✕</button></div>
     <div class="categories" id="categories"></div>
   </aside>
 
@@ -749,10 +808,26 @@
     <div class="keyboard" id="keyboard"></div>
     <button class="again" id="again" hidden>New game</button>
     <div class="hint">Type a letter or click the keys</div>
+
+    <!-- mobile-only: categories/stats/settings live inline on desktop but
+         open as overlay sheets here on phones, see the 860px media query -->
+    <div class="toolbar" id="toolbar">
+      <button class="toolbtn" data-open="categories">
+        <span class="toolicon">📂</span><span id="catToolLabel">All</span>
+      </button>
+      <button class="toolbtn" data-open="stats">
+        <span class="toolicon">🏆</span>Stats
+        <span class="toolbadge" id="streakBadge">0</span>
+      </button>
+      <button class="toolbtn" data-open="settings">
+        <span class="toolicon">🔊</span>Sound
+      </button>
+    </div>
   </main>
 
   <aside class="side right">
     <div class="streaks">
+      <div class="panel-head"><span>Stats</span><button class="panel-close" data-close>✕</button></div>
       <div class="streak" id="streakCur">
         <span class="ico">🔥</span>
         <span class="num" id="streakCurNum">0</span>
@@ -766,6 +841,7 @@
     </div>
 
     <div class="musicbox">
+      <div class="panel-head"><span>Sound Settings</span><button class="panel-close" data-close>✕</button></div>
       <button id="musicToggle" class="musicbtn" aria-pressed="false">
         <span id="musicIcon">▶</span> <span id="musicLabel">Play Music</span>
       </button>
@@ -785,6 +861,8 @@
   </aside>
 
 </div>
+
+<div id="overlayBackdrop"></div>
 
 <script>
 const CATEGORIES = {
@@ -1006,6 +1084,40 @@ const streakCurEl = document.getElementById("streakCur");
 const streakCurNumEl = document.getElementById("streakCurNum");
 const streakBestNumEl = document.getElementById("streakBestNum");
 
+/* ---- mobile overlay panels: categories / stats / settings ----
+   No-ops on desktop, where these three stay inline in the sidebars —
+   opening one just adds a class that the desktop CSS never matches. */
+const overlayBackdrop = document.getElementById("overlayBackdrop");
+const catToolLabelEl = document.getElementById("catToolLabel");
+const streakBadgeEl = document.getElementById("streakBadge");
+const panelEls = {
+  categories: document.querySelector(".side.left"),
+  stats: document.querySelector(".streaks"),
+  settings: document.querySelector(".musicbox")
+};
+
+function openPanel(name) {
+  const target = panelEls[name];
+  if (!target) return;
+  Object.values(panelEls).forEach(p => p.classList.remove("open"));
+  target.classList.add("open");
+  overlayBackdrop.classList.add("show");
+}
+
+function closePanels() {
+  Object.values(panelEls).forEach(p => p.classList.remove("open"));
+  overlayBackdrop.classList.remove("show");
+}
+
+document.querySelectorAll("[data-open]").forEach(btn => {
+  btn.addEventListener("click", () => openPanel(btn.dataset.open));
+});
+document.querySelectorAll("[data-close]").forEach(btn => {
+  btn.addEventListener("click", closePanels);
+});
+overlayBackdrop.addEventListener("click", closePanels);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closePanels(); });
+
 // 8-bit pixel wordmark, drawn from a 5x7 bitmap font
 const GLYPHS = {
   H: ["10001","10001","10001","11111","10001","10001","10001"],
@@ -1065,6 +1177,10 @@ function renderStreak(pulse) {
   streakCurNumEl.textContent = streak;
   streakBestNumEl.textContent = best;
   streakCurEl.classList.toggle("hot", streak >= 3);
+  if (streakBadgeEl) {
+    streakBadgeEl.textContent = streak;
+    streakBadgeEl.classList.toggle("show", streak > 0);
+  }
   if (pulse) {
     streakCurEl.classList.remove("pulse");
     void streakCurEl.offsetWidth; // restart the animation
@@ -1184,6 +1300,8 @@ function buildCategories() {
       category = name;
       buildCategories();
       startGame();
+      catToolLabelEl.textContent = name;
+      closePanels();
     });
     categoriesEl.appendChild(btn);
   }
