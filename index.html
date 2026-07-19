@@ -116,7 +116,14 @@
     background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.20) 2px 4px);
   }
 
-  /* ---- layout ---- */
+  /* ---- layout ----
+     Three tracks even though only two are ever filled: the right sidebar
+     needs a real column, and the left one is left empty on purpose so it
+     mirrors the right sidebar's width — otherwise the board (centered
+     within whatever's left over) drifts off to the left of the page and
+     that leftover space reads as dead air around it. .center/.side.right
+     are placed explicitly since without a matching left-column element,
+     grid auto-placement would otherwise put .center in the empty column. */
   .layout {
     display: grid;
     grid-template-columns: minmax(160px, 210px) minmax(0, 1fr) minmax(160px, 210px);
@@ -125,14 +132,14 @@
     width: 100%;
     max-width: 1280px;
   }
-  .center { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
+  .center { grid-column: 2; display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
   .side { display: flex; flex-direction: column; gap: 10px; }
-  .side.right { align-items: stretch; }
+  .side.right { grid-column: 3; align-items: stretch; }
 
   /* ---- mobile edge buttons + overlay panels ----
-     Categories/Stats/Settings sit inline in the sidebars on desktop. Below
-     860px there's no room for that without pushing the board and keyboard
-     off-screen, so they become bottom-sheet overlays instead, opened from
+     Categories/Stats/Settings sit inline in the right sidebar on desktop.
+     Below 860px there's no room for that without pushing the board and
+     keyboard off-screen, so they become bottom-sheet overlays instead, opened from
      buttons mounted beside the board — .playrow puts them in the same flex
      row as .stage so they're vertically centered on it for free, no fixed-
      position guesswork needed. Hidden here so nothing shows on desktop;
@@ -150,17 +157,19 @@
     /* .playrow's width:100% needs a definite size to resolve against — an
        auto-width fit-content grid item under justify-items:center can't
        supply one, and inflates past its own track trying to (verified: it
-       was rendering ~15px wider than the grid track and edge-left ended up
+       was rendering ~15px wider than the grid track and edge-right ended up
        flush against the true screen edge instead of respecting body's
        padding). */
-    .center { width: 100%; order: -1; }
-    .side.left { order: 0; }
-    .side.right { order: 1; }
+    .center { grid-column: 1; width: 100%; order: -1; }
+    .side.right { grid-column: 1; order: 1; }
 
-    .playrow { justify-content: space-between; }
-    .edge { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
-    .edge-left { align-items: flex-start; }
-    .edge-right { align-items: flex-end; }
+    /* only edge-right holds buttons now (Categories/Stats/Sound all live on
+       the right); the leftover empty first column just reserves the same
+       48px of space so the board stays centered instead of drifting right */
+    .playrow { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; gap: 8px; }
+    .playrow .stage { grid-column: 2; }
+    .edge { display: flex; flex-direction: column; gap: 8px; }
+    .edge-right { grid-column: 3; align-items: flex-end; }
     .edgebtn {
       position: relative;
       width: 48px;
@@ -197,7 +206,7 @@
     #overlayBackdrop.show { opacity: 1; pointer-events: auto; }
 
     /* the three secondary panels become bottom sheets, off-screen until opened */
-    .side.left, .streaks, .musicbox {
+    .categories-panel, .streaks, .musicbox {
       position: fixed;
       left: 50%; bottom: 0;
       transform: translate(-50%, 105%);
@@ -209,8 +218,8 @@
       padding-bottom: max(10px, env(safe-area-inset-bottom));
       box-shadow: 0 0 0 2px var(--edge), 0 -12px 34px rgba(0,0,0,0.55);
     }
-    .side.left.open, .streaks.open, .musicbox.open { transform: translate(-50%, 0); }
-    .side.left, .streaks { background: var(--panel); }
+    .categories-panel.open, .streaks.open, .musicbox.open { transform: translate(-50%, 0); }
+    .categories-panel, .streaks { background: var(--panel); }
 
     .panel-head {
       display: flex; align-items: center; justify-content: space-between;
@@ -290,6 +299,7 @@
   }
 
   /* ---- categories ---- */
+  .categories-panel { display: flex; flex-direction: column; }
   .categories { display: flex; flex-direction: column; gap: 7px; }
   button.cat {
     padding: 10px 10px;
@@ -389,12 +399,29 @@
   .figure.dead .beacon { fill: #3b3560; animation: none; }
   .figure.dead .metal { filter: saturate(0.35) brightness(0.75); }
 
-  /* ---- word ---- */
-  .word { display: flex; flex-wrap: wrap; gap: clamp(5px, 1.6vw, 10px); justify-content: center; max-width: 660px; }
+  /* ---- word ----
+     flex-wrap stays "nowrap" on purpose: a long word wrapping onto a second
+     line looked broken on narrow phones. Instead each --fit below picks the
+     smaller of the normal size and "however wide a letter can be while all
+     of them still fit across this row" (100cqw / letter count), so long
+     words shrink to stay on one line instead of wrapping. container-type
+     lets that math reference .word's own row width via cqw units. --n (the
+     letter count) is set from JS in render(). */
+  .word {
+    --gap: clamp(5px, 1.6vw, 10px);
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--gap);
+    justify-content: center;
+    max-width: 660px;
+    width: 100%;
+    container-type: inline-size;
+  }
   .letter {
-    width: clamp(22px, 6vw, 32px);
+    --fit: min(clamp(22px, 6vw, 32px), calc((100cqw - (var(--n, 8) - 1) * var(--gap)) / var(--n, 8)));
+    width: var(--fit);
     font-family: var(--px);
-    font-size: clamp(1.05rem, 3.8vw, 1.65rem);
+    font-size: calc(var(--fit) * 0.8);
     font-weight: 700;
     text-align: center;
     color: var(--muted);
@@ -464,8 +491,6 @@
     animation: pop 0.3s steps(3, end);
   }
   button.again:active { transform: translate(2px, 2px); }
-
-  .hint { font-size: 0.6rem; letter-spacing: 0.14em; color: var(--muted); opacity: 0.75; }
 
   /* ---- audio mixer: music and sfx are independent buses ---- */
   .musicbox {
@@ -545,14 +570,15 @@
     .stage { padding: 12px 18px; }
     /* the edge buttons freed up the row that used to sit below the keyboard —
        put that space back into the board and the word/keyboard letters.
-       Stage width is capped by the two edge buttons flanking it in the same
-       row (2 x 48px buttons + 2 x 8px gaps = 112px of the row's ~374px
-       content width, leaving 262px for the stage container including its
-       own 2 x 18px padding — so the svg itself tops out around 226px). Real
-       phones also gain extra keyboard height from the pointer:coarse rule
-       further down, which this test environment can't trigger to verify. */
+       Stage width is capped by the edge-button column and its empty mirror
+       flanking it in the same row (2 x 48px + 2 x 8px gaps = 112px of the
+       row's ~374px content width, leaving 262px for the stage container
+       including its own 2 x 18px padding — so the svg itself tops out
+       around 226px). Real phones also gain extra keyboard height from the
+       pointer:coarse rule further down, which this test environment can't
+       trigger to verify. */
     .stage svg { width: clamp(185px, 57vw, 430px); }
-    .letter { width: clamp(30px, 9.4vw, 40px); font-size: clamp(1.4rem, 5.6vw, 2rem); }
+    .letter { --fit: min(clamp(30px, 9.4vw, 40px), calc((100cqw - (var(--n, 8) - 1) * var(--gap)) / var(--n, 8))); }
     /* keys must fit 10-across within the row's ~374px content width:
        10 x width + 9 x gap(~4.3px) <= 374  =>  width <= ~33.5px */
     button.key { width: clamp(28px, 8.4vw, 40px); }
@@ -695,22 +721,13 @@
 
 <div class="layout">
 
-  <aside class="side left">
-    <div class="panel-head"><span>Categories</span><button class="panel-close" data-close>✕</button></div>
-    <div class="categories" id="categories"></div>
-  </aside>
-
   <main class="center">
     <div class="playrow" id="playrow">
       <!-- mobile-only: sits beside the board instead of below the keyboard,
            see the 860px query. Hidden on desktop, where these three stay
-           inline in the sidebars. -->
-      <div class="edge edge-left" id="edgeLeft">
-        <button class="edgebtn" data-open="categories">
-          <span class="edgeicon">📂</span><span class="edgelabel" id="catToolLabel">All</span>
-        </button>
-      </div>
-
+           inline in the right sidebar. The grid's empty first column (see
+           the 860px query) keeps the board centered without a matching
+           left-side button column. -->
     <div class="stage" id="stage">
   <svg width="200" height="230" viewBox="0 0 200 230" aria-hidden="true">
     <ellipse class="groundshadow" cx="140" cy="210" rx="36" ry="8" fill="url(#gShadow)"/>
@@ -839,6 +856,9 @@
 </div>
 
       <div class="edge edge-right" id="edgeRight">
+        <button class="edgebtn" data-open="categories">
+          <span class="edgeicon">📂</span><span class="edgelabel" id="catToolLabel">All</span>
+        </button>
         <button class="edgebtn" data-open="stats">
           <span class="edgeicon">🏆</span><span class="edgelabel">Stats</span>
           <span class="edgebadge" id="streakBadge">0</span>
@@ -853,10 +873,14 @@
     <div class="status" id="status"></div>
     <div class="keyboard" id="keyboard"></div>
     <button class="again" id="again" hidden>New game</button>
-    <div class="hint">Type a letter or click the keys</div>
   </main>
 
   <aside class="side right">
+    <div class="categories-panel" id="categoriesPanel">
+      <div class="panel-head"><span>Categories</span><button class="panel-close" data-close>✕</button></div>
+      <div class="categories" id="categories"></div>
+    </div>
+
     <div class="streaks">
       <div class="panel-head"><span>Stats</span><button class="panel-close" data-close>✕</button></div>
       <div class="streak" id="streakCur">
@@ -1116,13 +1140,13 @@ const streakCurNumEl = document.getElementById("streakCurNum");
 const streakBestNumEl = document.getElementById("streakBestNum");
 
 /* ---- mobile overlay panels: categories / stats / settings ----
-   No-ops on desktop, where these three stay inline in the sidebars —
+   No-ops on desktop, where these three stay inline in the right sidebar —
    opening one just adds a class that the desktop CSS never matches. */
 const overlayBackdrop = document.getElementById("overlayBackdrop");
 const catToolLabelEl = document.getElementById("catToolLabel");
 const streakBadgeEl = document.getElementById("streakBadge");
 const panelEls = {
-  categories: document.querySelector(".side.left"),
+  categories: document.getElementById("categoriesPanel"),
   stats: document.querySelector(".streaks"),
   settings: document.querySelector(".musicbox")
 };
@@ -1414,6 +1438,7 @@ function checkEnd() {
 
 function render() {
   wordEl.innerHTML = "";
+  wordEl.style.setProperty("--n", secret.length);
   for (const ch of secret) {
     const span = document.createElement("span");
     span.className = "letter";
