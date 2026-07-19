@@ -251,6 +251,19 @@
     .streaks { padding: 0 14px 14px; }
   }
 
+  @media (max-width: 860px) and (orientation: portrait) {
+    /* the board/word/status/keyboard group otherwise only fills the top
+       ~60% of a portrait phone screen, packed tight under the title with
+       a lot of dead space below it. Growing .layout to fill the rest of
+       body's height and spreading .center's children (board, word,
+       status, keyboard) evenly across it uses that space instead —
+       align-self:stretch is needed because the base .layout rule sets
+       align-items:start, which would otherwise leave .center only as
+       tall as its own content even inside a taller row. */
+    .layout { flex: 1 1 auto; min-height: 0; grid-template-rows: 1fr auto; }
+    .center { align-self: stretch; justify-content: space-evenly; }
+  }
+
   /* ---- title ---- */
   .titlebar { display: flex; align-items: center; }
   .titlebar svg { display: block; overflow: visible; }
@@ -610,7 +623,19 @@
        covers this (and every other short height at this width, not just
        the ones this query happens to also match) */
     .stage { padding: 8px 14px; }
-    body { gap: 8px; padding-top: calc(8px + env(safe-area-inset-top)); }
+    /* title+board/keyboard row otherwise pack against the top of the
+       screen, leaving the whole bottom half empty — centering the group
+       vertically splits that leftover height evenly above and below it
+       instead. */
+    body {
+      justify-content: center;
+      gap: 14px;
+      /* match top and bottom padding — the base rule's 18px bottom vs this
+         8px top was the last bit of the top/bottom imbalance, on top of
+         centering the content block itself */
+      padding-top: calc(8px + env(safe-area-inset-top));
+      padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    }
     .pixeltitle { width: clamp(170px, 34vw, 340px); }
 
     /* stacking board/word/status/keyboard top-to-bottom (the portrait
