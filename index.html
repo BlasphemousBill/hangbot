@@ -129,13 +129,16 @@
   .side { display: flex; flex-direction: column; gap: 10px; }
   .side.right { align-items: stretch; }
 
-  /* ---- mobile toolbar + overlay panels ----
+  /* ---- mobile edge buttons + overlay panels ----
      Categories/Stats/Settings sit inline in the sidebars on desktop. Below
      860px there's no room for that without pushing the board and keyboard
-     off-screen, so they become bottom-sheet overlays opened from three
-     compact buttons instead. Hidden here so nothing shows on desktop;
+     off-screen, so they become bottom-sheet overlays instead, opened from
+     buttons mounted beside the board — .playrow puts them in the same flex
+     row as .stage so they're vertically centered on it for free, no fixed-
+     position guesswork needed. Hidden here so nothing shows on desktop;
      the 860px query below is what actually turns them on. */
-  .toolbar { display: none; }
+  .playrow { display: flex; align-items: center; justify-content: center; width: 100%; gap: 8px; }
+  .edge { display: none; }
   .panel-head { display: none; }
   #overlayBackdrop { display: none; }
 
@@ -144,34 +147,44 @@
     /* grid items also default to min-width:auto (content-sized), which can
        push .side wider than its track before overflow-x:auto ever applies */
     .side { width: 100%; max-width: 620px; min-width: 0; }
-    .center { order: -1; }
+    /* .playrow's width:100% needs a definite size to resolve against — an
+       auto-width fit-content grid item under justify-items:center can't
+       supply one, and inflates past its own track trying to (verified: it
+       was rendering ~15px wider than the grid track and edge-left ended up
+       flush against the true screen edge instead of respecting body's
+       padding). */
+    .center { width: 100%; order: -1; }
     .side.left { order: 0; }
     .side.right { order: 1; }
 
-    .toolbar { display: flex; gap: 8px; width: 100%; max-width: 620px; }
-    .toolbtn {
+    .playrow { justify-content: space-between; }
+    .edge { display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto; }
+    .edge-left { align-items: flex-start; }
+    .edge-right { align-items: flex-end; }
+    .edgebtn {
       position: relative;
-      flex: 1 1 0;
+      width: 48px;
       display: flex; flex-direction: column; align-items: center; gap: 2px;
-      padding: 10px 6px;
+      padding: 8px 4px;
       font-family: var(--px);
-      font-size: 0.56rem; font-weight: 700; letter-spacing: 0.08em;
+      font-size: 0.5rem; font-weight: 700; letter-spacing: 0.03em;
       text-transform: uppercase;
       color: var(--muted);
       background: var(--panel2);
       border: 0; cursor: pointer;
       box-shadow: inset -3px -3px 0 rgba(0,0,0,0.55), inset 3px 3px 0 rgba(255,255,255,0.07), 0 0 0 2px var(--edge);
     }
-    .toolbtn:active { transform: translate(2px, 2px); }
-    .toolicon { font-size: 1.05rem; line-height: 1; }
-    .toolbadge {
-      position: absolute; top: 4px; right: 6px;
+    .edgebtn:active { transform: translate(2px, 2px); }
+    .edgeicon { font-size: 1rem; line-height: 1; }
+    .edgelabel { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .edgebadge {
+      position: absolute; top: 4px; right: 4px;
       min-width: 14px; height: 14px; padding: 0 3px;
       background: var(--yellow); color: #241a05;
       font-size: 0.5rem; font-weight: 700;
       display: none; align-items: center; justify-content: center;
     }
-    .toolbadge.show { display: flex; }
+    .edgebadge.show { display: flex; }
 
     #overlayBackdrop {
       display: block;
@@ -511,7 +524,7 @@
 
   /* ---- phone / touch tuning ---- */
   @media (pointer: coarse) {
-    button.key { height: clamp(44px, 11vw, 54px); }   /* 44px minimum tap target */
+    button.key { height: clamp(48px, 13vw, 58px); }   /* 44px minimum tap target, grown to use freed vertical space */
     button.cat { padding: 13px 10px; font-size: 0.7rem; }
     .musicbtn { padding: 13px 8px; }
     .mutebtn { width: 36px; height: 36px; }
@@ -523,14 +536,26 @@
      were sized generously enough that categories/streak/music landed well
      below the fold and needed a lot of scrolling to reach */
   @media (max-width: 480px) {
-    body { gap: 10px; }
+    body { gap: 20px; }
     .layout { gap: 10px; }
     .side { gap: 7px; }
     .titlebar { gap: 6px; }
     .titlebar > svg { width: 60px; height: 70px; }
     .pixeltitle { width: clamp(120px, 48vw, 230px); }
-    .stage { padding: 8px 14px; }
-    .stage svg { width: clamp(148px, 42vw, 430px); }
+    .stage { padding: 12px 18px; }
+    /* the edge buttons freed up the row that used to sit below the keyboard —
+       put that space back into the board and the word/keyboard letters.
+       Stage width is capped by the two edge buttons flanking it in the same
+       row (2 x 48px buttons + 2 x 8px gaps = 112px of the row's ~374px
+       content width, leaving 262px for the stage container including its
+       own 2 x 18px padding — so the svg itself tops out around 226px). Real
+       phones also gain extra keyboard height from the pointer:coarse rule
+       further down, which this test environment can't trigger to verify. */
+    .stage svg { width: clamp(185px, 57vw, 430px); }
+    .letter { width: clamp(30px, 9.4vw, 40px); font-size: clamp(1.4rem, 5.6vw, 2rem); }
+    /* keys must fit 10-across within the row's ~374px content width:
+       10 x width + 9 x gap(~4.3px) <= 374  =>  width <= ~33.5px */
+    button.key { width: clamp(28px, 8.4vw, 40px); }
   }
 
   @media (max-height: 520px) and (orientation: landscape) {
@@ -676,6 +701,16 @@
   </aside>
 
   <main class="center">
+    <div class="playrow" id="playrow">
+      <!-- mobile-only: sits beside the board instead of below the keyboard,
+           see the 860px query. Hidden on desktop, where these three stay
+           inline in the sidebars. -->
+      <div class="edge edge-left" id="edgeLeft">
+        <button class="edgebtn" data-open="categories">
+          <span class="edgeicon">📂</span><span class="edgelabel" id="catToolLabel">All</span>
+        </button>
+      </div>
+
     <div class="stage" id="stage">
   <svg width="200" height="230" viewBox="0 0 200 230" aria-hidden="true">
     <ellipse class="groundshadow" cx="140" cy="210" rx="36" ry="8" fill="url(#gShadow)"/>
@@ -803,26 +838,22 @@
   </svg>
 </div>
 
+      <div class="edge edge-right" id="edgeRight">
+        <button class="edgebtn" data-open="stats">
+          <span class="edgeicon">🏆</span><span class="edgelabel">Stats</span>
+          <span class="edgebadge" id="streakBadge">0</span>
+        </button>
+        <button class="edgebtn" data-open="settings">
+          <span class="edgeicon">🔊</span><span class="edgelabel">Sound</span>
+        </button>
+      </div>
+    </div>
+
     <div class="word" id="word"></div>
     <div class="status" id="status"></div>
     <div class="keyboard" id="keyboard"></div>
     <button class="again" id="again" hidden>New game</button>
     <div class="hint">Type a letter or click the keys</div>
-
-    <!-- mobile-only: categories/stats/settings live inline on desktop but
-         open as overlay sheets here on phones, see the 860px media query -->
-    <div class="toolbar" id="toolbar">
-      <button class="toolbtn" data-open="categories">
-        <span class="toolicon">📂</span><span id="catToolLabel">All</span>
-      </button>
-      <button class="toolbtn" data-open="stats">
-        <span class="toolicon">🏆</span>Stats
-        <span class="toolbadge" id="streakBadge">0</span>
-      </button>
-      <button class="toolbtn" data-open="settings">
-        <span class="toolicon">🔊</span>Sound
-      </button>
-    </div>
   </main>
 
   <aside class="side right">
