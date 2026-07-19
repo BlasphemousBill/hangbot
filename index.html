@@ -1,0 +1,2041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Hangman</title>
+<meta name="description" content="8-bit neon hangman with 1800 words and a live EDM soundtrack.">
+<meta name="theme-color" content="#07060f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hangman">
+<style>
+  :root {
+    --bg: #07060f;
+    --panel: #12102a;
+    --panel2: #1c1940;
+    --edge: #332c66;
+    --ink: #eaf6ff;
+    --muted: #8b93c9;
+    --pink: #ff2e88;
+    --cyan: #00f0ff;
+    --purple: #a45cff;
+    --lime: #b6ff2e;
+    --yellow: #ffd400;
+    --good: #39ff88;
+    --bad: #ff3355;
+    --px: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html {
+    /* no rubber-band scroll or pull-to-refresh inside the app */
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    min-height: 100dvh;              /* keeps the board clear of mobile browser chrome */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    /* respect notches and home indicators */
+    padding: calc(18px + env(safe-area-inset-top)) calc(clamp(6px, 2vw, 22px) + env(safe-area-inset-right))
+             calc(18px + env(safe-area-inset-bottom)) calc(clamp(6px, 2vw, 22px) + env(safe-area-inset-left));
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+    color: var(--ink);
+    font-family: var(--px);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: var(--bg);
+    overflow-x: hidden;
+  }
+
+  /* ---- neon glow field ---- */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -25%;
+    z-index: -3;
+    background:
+      radial-gradient(closest-side, rgba(255,46,136,0.30), transparent) 10% 15% / 55vmax 55vmax no-repeat,
+      radial-gradient(closest-side, rgba(0,240,255,0.26), transparent) 88% 12% / 50vmax 50vmax no-repeat,
+      radial-gradient(closest-side, rgba(164,92,255,0.26), transparent) 60% 85% / 58vmax 58vmax no-repeat;
+    filter: blur(30px);
+    animation: drift 26s ease-in-out infinite alternate;
+  }
+  @keyframes drift {
+    from { transform: translate3d(-2%, -1%, 0) scale(1); }
+    to   { transform: translate3d(3%, 2%, 0) scale(1.08); }
+  }
+
+  /* ---- synthwave floor grid ---- */
+  /* the grid itself is far wider than the screen, so clip it to the viewport */
+  .floor {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    height: 58vh;
+    z-index: -2;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .floor::before {
+    content: "";
+    position: absolute;
+    left: -60%; right: -60%; top: 0; bottom: 0;
+    background-image:
+      repeating-linear-gradient(to right, rgba(0,240,255,0.30) 0 2px, transparent 2px 84px),
+      repeating-linear-gradient(to bottom, rgba(255,46,136,0.30) 0 2px, transparent 2px 84px);
+    transform: perspective(300px) rotateX(74deg);
+    transform-origin: 50% 100%;
+    -webkit-mask-image: linear-gradient(to top, #000 8%, transparent 72%);
+    mask-image: linear-gradient(to top, #000 8%, transparent 72%);
+    animation: floorscroll 5s linear infinite;
+  }
+  @keyframes floorscroll {
+    from { background-position: 0 0, 0 0; }
+    to   { background-position: 0 0, 0 84px; }
+  }
+
+  /* ---- CRT scanlines ---- */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.20) 2px 4px);
+  }
+
+  /* ---- layout ---- */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(160px, 210px) minmax(0, 1fr) minmax(160px, 210px);
+    gap: clamp(14px, 2.5vw, 32px);
+    align-items: start;
+    width: 100%;
+    max-width: 1280px;
+  }
+  .center { display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: 0; }
+  .side { display: flex; flex-direction: column; gap: 10px; }
+  .side.right { align-items: stretch; }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; justify-items: center; }
+    .side { width: 100%; max-width: 620px; }
+    .center { order: -1; }
+    .side.left { order: 0; }
+    .side.right { order: 1; }
+    .categories { flex-direction: row !important; flex-wrap: wrap; justify-content: center; }
+    .streaks { flex-direction: row !important; justify-content: center; }
+    .streak { flex: 0 1 auto !important; }
+  }
+
+  /* ---- title ---- */
+  .titlebar { display: flex; align-items: center; gap: clamp(8px, 2vw, 20px); }
+  .titlebar svg { display: block; overflow: visible; }
+  .swinger { transform-origin: 74px 26px; animation: swing 2.6s ease-in-out infinite alternate; }
+  @keyframes swing {
+    from { transform: rotate(-10deg); }
+    to   { transform: rotate(10deg); }
+  }
+  h1 { margin: 0; display: flex; align-items: center; }
+  .pixeltitle {
+    width: clamp(210px, 44vw, 500px);
+    height: auto;
+    overflow: visible;
+    animation: titleglow 3.6s ease-in-out infinite;
+  }
+  .pixeltitle rect { fill: url(#gTitle); }
+  @keyframes titleglow {
+    0%, 100% { filter: drop-shadow(0 0 5px rgba(0,240,255,0.65)) drop-shadow(0 0 16px rgba(255,46,136,0.45)); }
+    50%      { filter: drop-shadow(0 0 9px rgba(255,46,136,0.7))  drop-shadow(0 0 22px rgba(0,240,255,0.5)); }
+  }
+  .glyph {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: pxbob 2.2s steps(4, end) infinite;
+  }
+  @keyframes pxbob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-0.7px); }
+  }
+
+  /* ---- streak ---- */
+  .streaks { display: flex; flex-direction: column; gap: 10px; }
+  .streak {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 12px 10px;
+    font-size: 0.6rem; letter-spacing: 0.16em;
+    color: var(--muted);
+    background: var(--panel);
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.5), inset 3px 3px 0 rgba(255,255,255,0.06), 0 0 0 2px var(--edge);
+  }
+  .streak .ico { font-size: 1.15rem; line-height: 1; }
+  .streak .num { font-size: 1.85rem; line-height: 1.05; font-weight: 700; }
+  #streakCur .num { color: var(--yellow); text-shadow: 0 0 12px rgba(255,212,0,0.75); }
+  #streakBest .num { color: var(--cyan); text-shadow: 0 0 12px rgba(0,240,255,0.75); }
+  .streak.hot {
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.5), inset 3px 3px 0 rgba(255,255,255,0.08),
+                0 0 0 2px var(--yellow), 0 0 20px rgba(255,212,0,0.5);
+  }
+  .streak.pulse { animation: pop 0.4s steps(4, end); }
+  @keyframes pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.16); }
+    100% { transform: scale(1); }
+  }
+
+  /* ---- categories ---- */
+  .categories { display: flex; flex-direction: column; gap: 7px; }
+  button.cat {
+    padding: 10px 10px;
+    font-family: var(--px);
+    font-size: 0.66rem; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--panel2);
+    border: 0; border-radius: 0;
+    cursor: pointer;
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.55), inset 3px 3px 0 rgba(255,255,255,0.07), 0 0 0 2px var(--edge);
+    transition: color 0.1s, background 0.1s;
+  }
+  @media (hover: hover) { button.cat:hover { color: var(--ink); background: #262055; } }
+  button.cat:active { transform: translate(2px, 2px); }
+  button.cat.active {
+    color: #04121a;
+    background: linear-gradient(180deg, #6ff7ff, #00b9d6);
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.35), inset 3px 3px 0 rgba(255,255,255,0.4),
+                0 0 0 2px #9dfaff, 0 0 18px rgba(0,240,255,0.55);
+  }
+
+  /* ---- stage ---- */
+  .stage {
+    background: linear-gradient(180deg, rgba(18,16,42,0.94), rgba(8,7,20,0.96));
+    border: 0; border-radius: 0;
+    padding: 14px 22px;
+    box-shadow: 0 0 0 2px var(--edge), 0 0 0 6px rgba(0,0,0,0.55),
+                0 0 34px rgba(0,240,255,0.16), inset 0 0 70px rgba(164,92,255,0.10);
+  }
+  .stage svg { width: clamp(230px, 30vw, 430px); height: auto; }
+  .stage.shake { animation: shake 0.36s steps(4, end); }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-8px); }
+    50% { transform: translateX(7px); }
+    75% { transform: translateX(-4px); }
+  }
+  svg { display: block; }
+
+  /* energy tether instead of a rope */
+  .rope { transition: opacity 0.35s; }
+  .tether { fill: var(--cyan); }
+  .rope.cut { opacity: 0; }
+  .powerstrip { fill: var(--cyan); opacity: 0.85; animation: pulsestrip 1.9s steps(2, end) infinite; }
+  @keyframes pulsestrip { 0%,100% { opacity: 0.85; } 50% { opacity: 0.35; } }
+  .beacon { fill: var(--pink); animation: blink 1.1s steps(2, end) infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+  .core { fill: var(--cyan); animation: pulsestrip 1.4s steps(2, end) infinite; }
+  .led { fill: var(--cyan); }
+  .led.warn { fill: var(--yellow); }
+  .led.alarm { fill: #ff7a1a; }
+  .led.good { fill: var(--good); }
+  .led.dead { fill: var(--bad); }
+  .groundshadow { opacity: 0; transition: opacity 0.4s; }
+  .groundshadow.show { opacity: 1; }
+
+  .figure { transform-box: view-box; }
+  .figbody { transform: translateY(12px); }
+  .figure [data-part] {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: drawin 0.3s steps(4, end);
+  }
+  @keyframes drawin {
+    from { opacity: 0; transform: scale(0.5); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  .figure:not(.saved):not(.dead) {
+    transform-origin: 140px 36px;
+    animation: dangle 5s ease-in-out infinite alternate;
+  }
+  @keyframes dangle {
+    from { transform: rotate(-2deg); }
+    to   { transform: rotate(2deg); }
+  }
+
+  /* powered down and released */
+  .figure.saved { transform: translateY(39px); animation: hop 0.6s steps(3, end) 3; }
+  @keyframes hop {
+    0%, 100% { transform: translateY(39px); }
+    50%      { transform: translateY(20px); }
+  }
+  .arm-up { display: none; }
+  .figure.saved .arm-up { display: inline; }
+  .figure.saved .arm-down { display: none; }
+  .figure.saved .core { fill: var(--good); }
+  .figure.saved .beacon { fill: var(--good); }
+
+  .figure.dead { transform-origin: 140px 36px; animation: limp 3.4s ease-in-out infinite alternate; }
+  @keyframes limp {
+    from { transform: rotate(-6deg); }
+    to   { transform: rotate(6deg); }
+  }
+  .figure.dead [data-part="0"] { transform: rotate(16deg); }
+  .figure.dead .core { fill: #3b3560; animation: none; }
+  .figure.dead .beacon { fill: #3b3560; animation: none; }
+  .figure.dead .metal { filter: saturate(0.35) brightness(0.75); }
+
+  /* ---- word ---- */
+  .word { display: flex; flex-wrap: wrap; gap: clamp(5px, 1.6vw, 10px); justify-content: center; max-width: 660px; }
+  .letter {
+    width: clamp(22px, 6vw, 32px);
+    font-family: var(--px);
+    font-size: clamp(1.05rem, 3.8vw, 1.65rem);
+    font-weight: 700;
+    text-align: center;
+    color: var(--muted);
+    border-bottom: 4px solid var(--edge);
+    padding-bottom: 5px;
+    line-height: 1.1;
+  }
+  .letter.filled { color: var(--cyan); text-shadow: 0 0 10px rgba(0,240,255,0.85); animation: pop 0.3s steps(3, end); }
+  .letter.miss { color: var(--bad); text-shadow: 0 0 10px rgba(255,51,85,0.85); }
+
+  /* ---- status ---- */
+  .status {
+    min-height: 1.8em;
+    font-family: var(--px);
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-align: center;
+  }
+  .status.win { color: var(--good); text-shadow: 0 0 10px rgba(57,255,136,0.6); }
+  .status.lose { color: var(--bad); text-shadow: 0 0 10px rgba(255,51,85,0.6); }
+  .status b { color: var(--ink); }
+
+  /* ---- keyboard ---- */
+  .keyboard { display: flex; flex-direction: column; gap: clamp(4px, 1.1vw, 8px); align-items: center; }
+  .row { display: flex; gap: clamp(4px, 1.1vw, 8px); }
+  button.key {
+    width: clamp(26px, 8vw, 44px);
+    height: clamp(36px, 9.5vw, 50px);
+    font-family: var(--px);
+    font-size: clamp(0.75rem, 2.2vw, 1rem);
+    font-weight: 700;
+    color: var(--ink);
+    background: var(--panel2);
+    border: 0; border-radius: 0;
+    cursor: pointer;
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.6), inset 3px 3px 0 rgba(255,255,255,0.07), 0 0 0 2px var(--edge);
+  }
+  @media (hover: hover) { button.key:hover:not(:disabled) { background: #2a2360; } }
+  button.key:active:not(:disabled) { transform: translate(2px, 2px); }
+  button.key:disabled { cursor: default; opacity: 0.32; box-shadow: 0 0 0 2px #241f4a; }
+  button.key.hit {
+    background: linear-gradient(180deg, #7dffb8, #12b45c);
+    color: #04180d; opacity: 1;
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.4), inset 3px 3px 0 rgba(255,255,255,0.35),
+                0 0 0 2px #a6ffcd, 0 0 14px rgba(57,255,136,0.5);
+  }
+  button.key.miss {
+    background: linear-gradient(180deg, #ff7f96, #a3122c);
+    color: #1a0207; opacity: 1;
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.4), inset 3px 3px 0 rgba(255,255,255,0.3),
+                0 0 0 2px #ffa8b8, 0 0 14px rgba(255,51,85,0.5);
+  }
+
+  /* ---- buttons ---- */
+  button.again {
+    padding: 14px 24px;
+    font-family: var(--px);
+    font-size: 0.74rem; font-weight: 700; letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #180410;
+    background: linear-gradient(180deg, #ff86bd, #d2166d);
+    border: 0; border-radius: 0;
+    cursor: pointer;
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.4), inset 3px 3px 0 rgba(255,255,255,0.35),
+                0 0 0 2px #ffa8d2, 0 0 22px rgba(255,46,136,0.55);
+    animation: pop 0.3s steps(3, end);
+  }
+  button.again:active { transform: translate(2px, 2px); }
+
+  .hint { font-size: 0.6rem; letter-spacing: 0.14em; color: var(--muted); opacity: 0.75; }
+
+  /* ---- music ---- */
+  .musicbox {
+    display: flex; flex-direction: column; gap: 9px;
+    padding: 11px;
+    background: var(--panel);
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.5), inset 3px 3px 0 rgba(255,255,255,0.06), 0 0 0 2px var(--edge);
+  }
+  .musicbtn {
+    padding: 10px 8px;
+    font-family: var(--px);
+    font-size: 0.62rem; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--panel2);
+    border: 0; border-radius: 0;
+    cursor: pointer;
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.55), inset 3px 3px 0 rgba(255,255,255,0.07), 0 0 0 2px var(--edge);
+  }
+  @media (hover: hover) { .musicbtn:hover { color: var(--ink); } }
+  .musicbtn:active { transform: translate(2px, 2px); }
+  .musicbtn.on {
+    color: #04180d;
+    background: linear-gradient(180deg, #7dffb8, #12b45c);
+    box-shadow: inset -3px -3px 0 rgba(0,0,0,0.35), inset 3px 3px 0 rgba(255,255,255,0.35),
+                0 0 0 2px #a6ffcd, 0 0 16px rgba(57,255,136,0.5);
+  }
+  .volrow { display: flex; align-items: center; gap: 8px; }
+  .mutebtn {
+    flex: 0 0 auto;
+    width: 30px; height: 30px;
+    font-size: 0.85rem;
+    background: var(--panel2);
+    border: 0; border-radius: 0;
+    cursor: pointer;
+    box-shadow: inset -2px -2px 0 rgba(0,0,0,0.5), 0 0 0 2px var(--edge);
+  }
+  .mutebtn.muted { opacity: 0.45; }
+  #volume { flex: 1 1 auto; min-width: 0; accent-color: var(--pink); cursor: pointer; }
+  .volval { font-size: 0.58rem; letter-spacing: 0.14em; color: var(--muted); text-align: center; }
+
+  /* ---- confetti ---- */
+  #confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 10; }
+  .bit {
+    position: absolute;
+    width: 8px; height: 8px;
+    animation: fall linear forwards;
+  }
+  @keyframes fall {
+    from { transform: translateY(-12vh); opacity: 1; }
+    to   { transform: translateY(105vh); opacity: 0.9; }
+  }
+
+  /* ---- phone / touch tuning ---- */
+  @media (pointer: coarse) {
+    button.key { height: clamp(44px, 11vw, 54px); }   /* 44px minimum tap target */
+    button.cat { padding: 13px 10px; font-size: 0.7rem; }
+    .musicbtn { padding: 13px 8px; }
+    .mutebtn { width: 38px; height: 38px; }
+    #volume { height: 26px; }
+    button.again { padding: 16px 26px; }
+  }
+  /* phone in landscape: shrink the board so the keyboard still fits */
+  @media (max-height: 520px) and (orientation: landscape) {
+    .stage svg { width: clamp(150px, 22vh, 240px); }
+    .stage { padding: 8px 14px; }
+    body { gap: 8px; padding-top: calc(8px + env(safe-area-inset-top)); }
+    .pixeltitle { width: clamp(150px, 26vw, 300px); }
+  }
+  /* installed app: no browser chrome, so use the full screen */
+  @media (display-mode: standalone) {
+    body { padding-top: calc(10px + env(safe-area-inset-top)); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="floor"></div>
+<div id="confetti"></div>
+
+<!-- shared palette for both the title cowboy and the game cowboy -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="gTitle" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#ff2e88"/><stop offset="0.5" stop-color="#a45cff"/><stop offset="1" stop-color="#00f0ff"/>
+  </linearGradient>
+  <linearGradient id="gSteel" x1="0" y1="0" x2="1" y2="0.3">
+    <stop offset="0" stop-color="#9fb2d4"/><stop offset="0.45" stop-color="#6b7a9e"/><stop offset="1" stop-color="#3c4664"/>
+  </linearGradient>
+  <linearGradient id="gSteelDark" x1="0" y1="0" x2="1" y2="0.3">
+    <stop offset="0" stop-color="#5d6a8b"/><stop offset="1" stop-color="#2a3149"/>
+  </linearGradient>
+  <radialGradient id="gShadow">
+    <stop offset="0" stop-color="rgba(0,240,255,0.45)"/><stop offset="1" stop-color="rgba(0,240,255,0)"/>
+  </radialGradient>
+</defs></svg>
+
+<div class="titlebar">
+  <svg width="104" height="120" viewBox="0 0 104 122" aria-hidden="true">
+    <rect x="16" y="10" width="12" height="98" fill="url(#gSteel)"/>
+    <rect x="17" y="10" width="2" height="98" fill="#cfe6ff" opacity="0.3"/>
+    <rect x="20" y="20" width="3" height="80" class="powerstrip"/>
+    <rect x="16" y="8" width="62" height="11" fill="url(#gSteel)"/>
+    <rect x="16" y="8" width="62" height="2" fill="#cfe6ff" opacity="0.3"/>
+    <rect x="8" y="106" width="76" height="10" fill="url(#gSteel)"/>
+    <rect x="70" y="19" width="3" height="7" class="tether"/>
+    <g class="swinger">
+      <g transform="translate(71.5,26) scale(0.46) translate(-140,-25)">
+
+      <g>
+        <rect x="128" y="126" width="12" height="22" fill="url(#gSteel)" class="metal"/>
+        <circle cx="133" cy="150" r="5.5" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="128" y="153" width="10" height="17" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="130" y="153" width="2" height="17" fill="#cfe6ff" opacity="0.28"/>
+        <rect x="120" y="170" width="20" height="8" fill="url(#gSteel)" class="metal"/>
+        <rect x="120" y="175" width="20" height="3" fill="#07060f" opacity="0.55"/>
+      </g>
+      <g>
+        <rect x="140" y="126" width="12" height="22" fill="url(#gSteel)" class="metal"/>
+        <circle cx="147" cy="150" r="5.5" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="142" y="153" width="10" height="17" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="144" y="153" width="2" height="17" fill="#cfe6ff" opacity="0.28"/>
+        <rect x="140" y="170" width="20" height="8" fill="url(#gSteel)" class="metal"/>
+        <rect x="140" y="175" width="20" height="3" fill="#07060f" opacity="0.55"/>
+      </g>
+      <g>
+        <g class="arm-down">
+          <path d="M125 92 L116 104 L111 115" stroke="url(#gSteel)" stroke-width="9" fill="none"
+                stroke-linecap="square" stroke-linejoin="round" class="metal"/>
+          <circle cx="116" cy="104" r="3.6" fill="#07060f" opacity="0.5"/>
+          <rect x="104" y="113" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+          <rect x="110" y="113" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+        </g>
+        <g class="arm-up">
+          <path d="M125 92 L117 78 L113 66" stroke="url(#gSteel)" stroke-width="9" fill="none"
+                stroke-linecap="square" stroke-linejoin="round" class="metal"/>
+          <circle cx="117" cy="78" r="3.6" fill="#07060f" opacity="0.5"/>
+          <rect x="106" y="58" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+          <rect x="112" y="58" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+        </g>
+      </g>
+      <g>
+        <g class="arm-down">
+          <path d="M155 92 L164 104 L169 115" stroke="url(#gSteel)" stroke-width="9" fill="none"
+                stroke-linecap="square" stroke-linejoin="round" class="metal"/>
+          <circle cx="164" cy="104" r="3.6" fill="#07060f" opacity="0.5"/>
+          <rect x="165" y="113" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+          <rect x="171" y="113" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+        </g>
+        <g class="arm-up">
+          <path d="M155 92 L163 78 L167 66" stroke="url(#gSteel)" stroke-width="9" fill="none"
+                stroke-linecap="square" stroke-linejoin="round" class="metal"/>
+          <circle cx="163" cy="78" r="3.6" fill="#07060f" opacity="0.5"/>
+          <rect x="163" y="58" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+          <rect x="169" y="58" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+        </g>
+      </g>
+      <g>
+        <rect x="134" y="76" width="12" height="9" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="113" y="84" width="15" height="13" fill="url(#gSteel)" class="metal"/>
+        <rect x="152" y="84" width="15" height="13" fill="url(#gSteel)" class="metal"/>
+        <rect x="120" y="82" width="40" height="50" fill="url(#gSteel)" class="metal"/>
+        <rect x="120" y="82" width="40" height="4" fill="#cfe6ff" opacity="0.25"/>
+        <rect x="120" y="98" width="40" height="2" fill="#07060f" opacity="0.45"/>
+        <rect x="120" y="126" width="40" height="6" fill="#07060f" opacity="0.4"/>
+        <rect x="124" y="88" width="11" height="2.5" fill="#07060f" opacity="0.5"/>
+        <rect x="124" y="92" width="11" height="2.5" fill="#07060f" opacity="0.5"/>
+        <rect x="145" y="88" width="11" height="2.5" fill="#07060f" opacity="0.5"/>
+        <rect x="145" y="92" width="11" height="2.5" fill="#07060f" opacity="0.5"/>
+        <circle cx="140" cy="112" r="9.5" fill="#07060f"/>
+        <circle cx="140" cy="112" r="6.5" class="core"/>
+        <rect x="138" y="110" width="4" height="4" fill="#eafcff"/>
+      </g>
+      <g>
+        <rect x="139" y="30" width="3" height="14" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="136.5" y="25" width="8" height="7" class="beacon"/>
+        <rect x="112" y="57" width="7" height="15" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="161" y="57" width="7" height="15" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="117" y="43" width="46" height="41" fill="url(#gSteel)" class="metal"/>
+        <rect x="117" y="43" width="46" height="4" fill="#cfe6ff" opacity="0.28"/>
+        <rect x="117" y="80" width="46" height="4" fill="#07060f" opacity="0.4"/>
+        <rect x="122" y="53" width="36" height="17" fill="#07060f"/>
+        <rect x="122" y="53" width="36" height="2" fill="#1b2340"/>
+        <rect x="128" y="61" width="4" height="4" class="led good"/><rect x="132" y="57" width="4" height="4" class="led good"/><rect x="136" y="61" width="4" height="4" class="led good"/><rect x="144" y="61" width="4" height="4" class="led good"/><rect x="148" y="57" width="4" height="4" class="led good"/><rect x="152" y="61" width="4" height="4" class="led good"/>
+        <rect x="129" y="74" width="22" height="2" fill="#07060f" opacity="0.6"/>
+        <rect x="129" y="77.5" width="22" height="2" fill="#07060f" opacity="0.6"/>
+        <rect x="120" y="46" width="3" height="3" fill="#07060f" opacity="0.55"/>
+        <rect x="157" y="46" width="3" height="3" fill="#07060f" opacity="0.55"/>
+      </g>
+      </g>
+    </g>
+  </svg>
+  <h1 id="title" aria-label="Hangman"></h1>
+</div>
+
+<div class="layout">
+
+  <aside class="side left">
+    <div class="categories" id="categories"></div>
+  </aside>
+
+  <main class="center">
+    <div class="stage" id="stage">
+  <svg width="200" height="230" viewBox="0 0 200 230" aria-hidden="true">
+    <ellipse class="groundshadow" cx="140" cy="210" rx="36" ry="8" fill="url(#gShadow)"/>
+
+    <g class="gallows">
+      <rect x="14" y="204" width="124" height="15" fill="url(#gSteel)"/>
+      <rect x="14" y="204" width="124" height="4" fill="#cfe6ff" opacity="0.25"/>
+      <g opacity="0.85">
+        <rect x="18" y="211" width="7" height="6" fill="#ffd400"/>
+        <rect x="32" y="211" width="7" height="6" fill="#ffd400"/>
+        <rect x="46" y="211" width="7" height="6" fill="#ffd400"/>
+        <rect x="60" y="211" width="7" height="6" fill="#ffd400"/>
+        <rect x="74" y="211" width="7" height="6" fill="#ffd400"/>
+        <rect x="88" y="211" width="7" height="6" fill="#ffd400"/>
+        <rect x="102" y="211" width="7" height="6" fill="#ffd400"/>
+        <rect x="116" y="211" width="7" height="6" fill="#ffd400"/>
+        <rect x="130" y="211" width="7" height="6" fill="#ffd400"/>
+      </g>
+      <rect x="45" y="16" width="20" height="190" fill="url(#gSteel)"/>
+      <rect x="58" y="16" width="7" height="190" fill="#07060f" opacity="0.32"/>
+      <rect x="47" y="16" width="3" height="190" fill="#cfe6ff" opacity="0.3"/>
+      <rect x="52" y="34" width="4" height="160" class="powerstrip"/>
+      <g opacity="0.5">
+        <rect x="45" y="62" width="20" height="2" fill="#07060f"/>
+        <rect x="45" y="108" width="20" height="2" fill="#07060f"/>
+        <rect x="45" y="154" width="20" height="2" fill="#07060f"/>
+      </g>
+      <rect x="45" y="12" width="104" height="17" fill="url(#gSteel)"/>
+      <rect x="45" y="23" width="104" height="6" fill="#07060f" opacity="0.32"/>
+      <rect x="45" y="12" width="104" height="3" fill="#cfe6ff" opacity="0.3"/>
+      <path d="M65 31 L88 31 L65 54 Z" fill="url(#gSteelDark)" opacity="0.9"/>
+      <rect x="48" y="18" width="3" height="3" fill="#07060f" opacity="0.5"/>
+      <rect x="142" y="18" width="3" height="3" fill="#07060f" opacity="0.5"/>
+    </g>
+
+    <g class="rope" id="rope">
+      <rect x="138" y="29" width="4" height="9" class="tether"/>
+      <rect x="131" y="34" width="18" height="9" fill="url(#gSteel)"/>
+      <rect x="133" y="36" width="14" height="5" class="tether"/>
+    </g>
+
+    <g id="figure" class="figure"><g class="figbody">
+
+      <g data-part="4">
+        <rect x="128" y="126" width="12" height="22" fill="url(#gSteel)" class="metal"/>
+        <circle cx="133" cy="150" r="5.5" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="128" y="153" width="10" height="17" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="130" y="153" width="2" height="17" fill="#cfe6ff" opacity="0.28"/>
+        <rect x="120" y="170" width="20" height="8" fill="url(#gSteel)" class="metal"/>
+        <rect x="120" y="175" width="20" height="3" fill="#07060f" opacity="0.55"/>
+      </g>
+      <g data-part="5">
+        <rect x="140" y="126" width="12" height="22" fill="url(#gSteel)" class="metal"/>
+        <circle cx="147" cy="150" r="5.5" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="142" y="153" width="10" height="17" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="144" y="153" width="2" height="17" fill="#cfe6ff" opacity="0.28"/>
+        <rect x="140" y="170" width="20" height="8" fill="url(#gSteel)" class="metal"/>
+        <rect x="140" y="175" width="20" height="3" fill="#07060f" opacity="0.55"/>
+      </g>
+      <g data-part="2">
+        <g class="arm-down">
+          <path d="M125 92 L116 104 L111 115" stroke="url(#gSteel)" stroke-width="9" fill="none"
+                stroke-linecap="square" stroke-linejoin="round" class="metal"/>
+          <circle cx="116" cy="104" r="3.6" fill="#07060f" opacity="0.5"/>
+          <rect x="104" y="113" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+          <rect x="110" y="113" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+        </g>
+        <g class="arm-up">
+          <path d="M125 92 L117 78 L113 66" stroke="url(#gSteel)" stroke-width="9" fill="none"
+                stroke-linecap="square" stroke-linejoin="round" class="metal"/>
+          <circle cx="117" cy="78" r="3.6" fill="#07060f" opacity="0.5"/>
+          <rect x="106" y="58" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+          <rect x="112" y="58" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+        </g>
+      </g>
+      <g data-part="3">
+        <g class="arm-down">
+          <path d="M155 92 L164 104 L169 115" stroke="url(#gSteel)" stroke-width="9" fill="none"
+                stroke-linecap="square" stroke-linejoin="round" class="metal"/>
+          <circle cx="164" cy="104" r="3.6" fill="#07060f" opacity="0.5"/>
+          <rect x="165" y="113" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+          <rect x="171" y="113" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+        </g>
+        <g class="arm-up">
+          <path d="M155 92 L163 78 L167 66" stroke="url(#gSteel)" stroke-width="9" fill="none"
+                stroke-linecap="square" stroke-linejoin="round" class="metal"/>
+          <circle cx="163" cy="78" r="3.6" fill="#07060f" opacity="0.5"/>
+          <rect x="163" y="58" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+          <rect x="169" y="58" width="5" height="10" fill="url(#gSteelDark)" class="metal"/>
+        </g>
+      </g>
+      <g data-part="1">
+        <rect x="134" y="76" width="12" height="9" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="113" y="84" width="15" height="13" fill="url(#gSteel)" class="metal"/>
+        <rect x="152" y="84" width="15" height="13" fill="url(#gSteel)" class="metal"/>
+        <rect x="120" y="82" width="40" height="50" fill="url(#gSteel)" class="metal"/>
+        <rect x="120" y="82" width="40" height="4" fill="#cfe6ff" opacity="0.25"/>
+        <rect x="120" y="98" width="40" height="2" fill="#07060f" opacity="0.45"/>
+        <rect x="120" y="126" width="40" height="6" fill="#07060f" opacity="0.4"/>
+        <rect x="124" y="88" width="11" height="2.5" fill="#07060f" opacity="0.5"/>
+        <rect x="124" y="92" width="11" height="2.5" fill="#07060f" opacity="0.5"/>
+        <rect x="145" y="88" width="11" height="2.5" fill="#07060f" opacity="0.5"/>
+        <rect x="145" y="92" width="11" height="2.5" fill="#07060f" opacity="0.5"/>
+        <circle cx="140" cy="112" r="9.5" fill="#07060f"/>
+        <circle cx="140" cy="112" r="6.5" class="core"/>
+        <rect x="138" y="110" width="4" height="4" fill="#eafcff"/>
+      </g>
+      <g data-part="0">
+        <rect x="139" y="30" width="3" height="14" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="136.5" y="25" width="8" height="7" class="beacon"/>
+        <rect x="112" y="57" width="7" height="15" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="161" y="57" width="7" height="15" fill="url(#gSteelDark)" class="metal"/>
+        <rect x="117" y="43" width="46" height="41" fill="url(#gSteel)" class="metal"/>
+        <rect x="117" y="43" width="46" height="4" fill="#cfe6ff" opacity="0.28"/>
+        <rect x="117" y="80" width="46" height="4" fill="#07060f" opacity="0.4"/>
+        <rect x="122" y="53" width="36" height="17" fill="#07060f"/>
+        <rect x="122" y="53" width="36" height="2" fill="#1b2340"/>
+        <g id="face"></g>
+        <rect x="129" y="74" width="22" height="2" fill="#07060f" opacity="0.6"/>
+        <rect x="129" y="77.5" width="22" height="2" fill="#07060f" opacity="0.6"/>
+        <rect x="120" y="46" width="3" height="3" fill="#07060f" opacity="0.55"/>
+        <rect x="157" y="46" width="3" height="3" fill="#07060f" opacity="0.55"/>
+      </g>
+    </g></g>
+  </svg>
+</div>
+
+    <div class="word" id="word"></div>
+    <div class="status" id="status"></div>
+    <div class="keyboard" id="keyboard"></div>
+    <button class="again" id="again" hidden>New game</button>
+    <div class="hint">Type a letter or click the keys</div>
+  </main>
+
+  <aside class="side right">
+    <div class="streaks">
+      <div class="streak" id="streakCur">
+        <span class="ico">🔥</span>
+        <span class="num" id="streakCurNum">0</span>
+        <span>Current</span>
+      </div>
+      <div class="streak" id="streakBest">
+        <span class="ico">🏆</span>
+        <span class="num" id="streakBestNum">0</span>
+        <span>Best</span>
+      </div>
+    </div>
+
+    <div class="musicbox">
+      <button id="musicToggle" class="musicbtn" aria-pressed="false">
+        <span id="musicIcon">▶</span> <span id="musicLabel">Play Music</span>
+      </button>
+      <div class="volrow">
+        <button id="muteBtn" class="mutebtn" title="Mute">🔊</button>
+        <input id="volume" type="range" min="0" max="100" value="35" aria-label="Volume">
+      </div>
+      <div class="volval"><span id="volNum">35</span>%</div>
+    </div>
+  </aside>
+
+</div>
+
+<script>
+const CATEGORIES = {
+  Geography: [
+    "albania","algeria","andorra","armenia","austria","bahamas","bahrain","belarus","belgium","bolivia",
+    "botswana","bulgaria","cambodia","cameroon","colombia","croatia","denmark","djibouti","ecuador","eritrea",
+    "estonia","ethiopia","finland","germany","grenada","guatemala","honduras","hungary","iceland","indonesia",
+    "ireland","jamaica","jordan","kiribati","kyrgyzstan","lebanon","lesotho","liberia","lithuania","malaysia",
+    "maldives","mongolia","montenegro","morocco","mozambique","myanmar","namibia","nicaragua","nigeria","norway",
+    "pakistan","paraguay","poland","portugal","romania","rwanda","senegal","serbia","slovakia","slovenia",
+    "somalia","suriname","sweden","tanzania","thailand","tunisia","uganda","ukraine","uruguay","vanuatu",
+    "vietnam","zambia","zimbabwe","azerbaijan","barbados","belize","bhutan","brazil","brunei","burundi",
+    "canada","cyprus","czechia","france","greece","guinea","kuwait","latvia","malawi","mexico",
+    "monaco","panama","russia","taiwan","turkey","georgia","guyana","tuvalu","comoros","dominica",
+    "amsterdam","bangkok","barcelona","beijing","belgrade","brisbane","brussels","bucharest","budapest","calgary",
+    "canberra","caracas","chicago","colombo","copenhagen","damascus","dortmund","dresden","dublin","edmonton",
+    "florence","glasgow","hamburg","helsinki","honolulu","istanbul","jakarta","kampala","karachi","kingston",
+    "lisbon","liverpool","ljubljana","london","madrid","manila","marseille","melbourne","memphis","milwaukee",
+    "montreal","moscow","mumbai","munich","nairobi","naples","newcastle","orlando","ottawa","phoenix",
+    "portland","prague","pretoria","quebec","rotterdam","santiago","sapporo","seattle","shanghai","singapore",
+    "stockholm","sydney","tijuana","toronto","valencia","vancouver","venice","vienna","warsaw","zagreb",
+    "nashville","cleveland","baltimore","charlotte","sacramento","richmond","savannah","wichita","spokane","anchorage",
+    "reykjavik","edinburgh","belfast","cardiff","bristol","leicester","sheffield","nottingham","southampton","frankfurt",
+    "stuttgart","hannover","leipzig","europe","africa","antarctica","australia","oceania","eurasia","greenland"
+  ],
+  Sports: [
+    "patriots","steelers","packers","cowboys","seahawks","broncos","chargers","raiders","dolphins","jaguars",
+    "bengals","browns","ravens","titans","texans","giants","eagles","commanders","panthers","falcons",
+    "saints","buccaneers","hurricanes","cardinals","chiefs","lakers","celtics","warriors","knicks","nuggets",
+    "rockets","mavericks","clippers","pistons","pacers","raptors","sixers","hornets","wizards","grizzlies",
+    "pelicans","thunder","timberwolves","blazers","yankees","dodgers","mariners","astros","braves","phillies",
+    "brewers","padres","angels","royals","orioles","pirates","marlins","nationals","athletics","guardians",
+    "diamondbacks","rockies","rangers","bruins","penguins","blackhawks","canadiens","oilers","flames","canucks",
+    "senators","sabres","flyers","islanders","devils","capitals","lightning","predators","avalanche","coyotes",
+    "sharks","kraken","villarreal","arsenal","chelsea","tottenham","everton","juventus","atletico","sevilla",
+    "bayern","leverkusen","feyenoord","benfica","sporting","napoli","fiorentina","palmeiras","flamengo","corinthians",
+    "quarterback","linebacker","cornerback","safety","fullback","halfback","receiver","tightend","lineman","punter",
+    "kicker","center","tackle","goalkeeper","defender","midfielder","striker","winger","sweeper","forward",
+    "libero","pitcher","catcher","shortstop","outfielder","infielder","batter","slugger","reliever","closer",
+    "starter","umpire","pointguard","playmaker","rebounder","goaltender","defenseman","enforcer","captain","referee",
+    "linesman","manager","goalie","wideout","runningback","nosetackle","placekicker","longsnapper","freesafety","backcourt",
+    "lebron","ronaldo","federer","djokovic","serena","mahomes","gretzky","ovechkin","durant","harden",
+    "giannis","embiid","doncic","beckham","neymar","mbappe","haaland","modric","iniesta","zidane",
+    "maradona","phelps","ledecky","verstappen","sharapova","mcilroy","nicklaus","palmer","spieth","scheffler",
+    "crosby","mcdavid","lemieux","ohtani","griffey","clemente","koufax","verlander","scherzer","pujols",
+    "rodgers","manning","montana","sanders","shaquille","kareem","olajuwon","barkley","pippen","iverson"
+  ],
+  Music: [
+    "guitar","ukulele","mandolin","violin","harpsichord","clarinet","trumpet","trombone","saxophone","piccolo",
+    "bassoon","recorder","marimba","xylophone","vibraphone","glockenspiel","timpani","cymbals","tambourine","triangle",
+    "maracas","castanets","bongos","congas","djembe","balalaika","dulcimer","zither","theremin","accordion",
+    "harmonica","bagpipes","synthesizer","keyboards","fiddle","euphonium","cornet","flugelhorn","sousaphone","clavichord",
+    "melodica","ocarina","panpipes","timbales","kalimba","autoharp","concertina","bandoneon","harmonium","mellotron",
+    "drumsticks","metronome","amplifier","microphone","bassdrum","snaredrum","drumkit","keytar","acoustic","strings",
+    "beatles","metallica","nirvana","radiohead","coldplay","aerosmith","blondie","ramones","pixies","genesis",
+    "journey","kansas","supertramp","santana","fleetwood","scorpions","megadeth","slipknot","pantera","anthrax",
+    "soundgarden","audioslave","incubus","deftones","chevelle","disturbed","godsmack","shinedown","weezer","interpol",
+    "strokes","killers","paramore","evanescence","nickelback","sublime","outkast","eurythmics","roxette","ultravox",
+    "zeppelin","queensryche","foreigner","survivor","primus","gorillaz","portishead","prodigy","underworld","orbital",
+    "leftfield","faithless","morcheeba","maneskin","wolfmother","airbourne","monkees","hollies","animals","zombies",
+    "turtles","shadows","searchers","yardbirds","traffic","badfinger","wishbone","westlife","boyzone","backstreet",
+    "pretenders","damned","buzzcocks","stranglers","undertones","madonna","prince","rihanna","beyonce","shakira",
+    "sinatra","presley","hendrix","clapton","morrison","lennon","mccartney","harrison","debussy","rachmaninoff",
+    "springsteen","aretha","eminem","kendrick","weeknd","eilish","ariana","grande","biggie","pharrell",
+    "timberlake","bieber","mendes","stravinsky","garfunkel","joplin","marley","gershwin","coltrane","ellington",
+    "armstrong","gillespie","orbison","fitzgerald","haggard","jennings","parton","mcentire","shelton","underwood",
+    "wallen","stapleton","musgraves","chesney","marsalis","mingus","pavarotti","domingo","caruso","callas",
+    "bocelli","mozart","beethoven","chopin","vivaldi","brahms","handel","schubert","wagner","tchaikovsky"
+  ],
+  History: [
+    "napoleon","cleopatra","churchill","stalin","mussolini","gandhi","mandela","lincoln","washington","roosevelt",
+    "kennedy","eisenhower","columbus","magellan","genghis","hannibal","spartacus","charlemagne","caesar","augustus",
+    "hadrian","trajan","caligula","constantine","attila","socrates","aristotle","herodotus","alexander","pericles",
+    "leonidas","hammurabi","tutankhamun","nefertiti","ramesses","akhenaten","hatshepsut","montezuma","atahualpa","cortes",
+    "pizarro","cromwell","wellington","bismarck","garibaldi","metternich","richelieu","robespierre","danton","lafayette",
+    "jefferson","madison","hamilton","sherman","custer","geronimo","sacagawea","tubman","douglass","pankhurst",
+    "waterloo","gettysburg","stalingrad","normandy","dunkirk","versailles","yorktown","lexington","antietam","verdun",
+    "gallipoli","trafalgar","agincourt","hastings","bannockburn","thermopylae","crusades","renaissance","reformation","revolution",
+    "holocaust","hiroshima","nagasaki","armistice","blitzkrieg","inquisition","bubonic","prohibition","depression","watergate",
+    "apartheid","annexation","abdication","coronation","conquest","invasion","rebellion","uprising","massacre","genocide",
+    "exodus","diaspora","colonization","emancipation","secession","surrender","armada","mayflower","jamestown","plymouth",
+    "antiquity","medieval","prehistoric","neolithic","paleolithic","mesolithic","civilization","dynasty","monarchy","empire",
+    "emperor","kingdom","feudalism","knights","chivalry","crusader","templar","monastery","cathedral","pilgrim",
+    "samurai","shogun","bushido","mongols","khanate","aztecs","mayans","babylon","sumerian","assyrian",
+    "phoenician","carthage","byzantine","ottoman","sultan","caliphate","moorish","pharaoh","pyramid","obelisk",
+    "papyrus","hieroglyph","sarcophagus","mummies","gladiator","colosseum","aqueduct","centurion","legion","senate",
+    "republic","consul","tribune","vikings","longship","norsemen","saxons","normans","peasant","serfdom",
+    "nobility","aristocracy","fortress","citadel","rampart","drawbridge","catapult","trebuchet","longbow","crossbow",
+    "chainmail","gauntlet","halberd","musket","cannon","cavalry","infantry","artillery","regiment","battalion",
+    "imperialism","nationalism","communism","fascism","socialism","democracy","bolshevik","guillotine","bastille","jacobins"
+  ],
+  Technology: [
+    "algorithm","software","hardware","firmware","database","network","internet","protocol","ethernet","wireless",
+    "bluetooth","broadband","bandwidth","latency","throughput","gateway","firewall","encryption","decryption","ciphertext",
+    "plaintext","hashing","checksum","blockchain","cryptography","quantum","qubits","computing","processor","transistor",
+    "microchip","motherboard","circuits","resistor","capacitor","inductor","voltage","silicon","lithography","nanometer",
+    "keyboard","monitor","touchscreen","trackpad","joystick","headset","webcam","printer","scanner","projector",
+    "laptop","desktop","tablet","server","mainframe","terminal","console","router","adapter","middleware",
+    "battery","powerbank","compiler","interpreter","debugger","runtime","framework","libraries","function","variable",
+    "constant","operator","iterator","recursion","pointer","frontend","backend","fullstack","developer","engineer",
+    "programmer","scripting","semantic","refactor","deployment","container","kubernetes","hypervisor","emulator","simulator",
+    "sandbox","repository","versioning","branching","commits","pipeline","automation","integration","unittest","benchmark",
+    "artificial","intelligence","inference","transformer","embedding","gradient","overfitting","clustering","regression","classifier",
+    "predictive","generative","robotics","automaton","actuator","sensors","gyroscope","satellite","telescope","spacecraft",
+    "propulsion","aerospace","avionics","navigation","autopilot","biometric","fingerprint","credential","password","passkey",
+    "malware","phishing","spyware","ransomware","botnets","exploits","antivirus","streaming","download","compression",
+    "bitrate","codecs","rendering","graphics","pixels","resolution","texture","shading","rasterize","raytracing",
+    "animation","modeling","virtual","augmented","metaverse","holograms","immersive","haptics","drones","prototype",
+    "android","windows","firefox","chrome","youtube","spotify","twitter","facebook","instagram","snapchat",
+    "tiktok","reddit","discord","twitch","google","microsoft","samsung","nvidia","qualcomm","oracle",
+    "shopify","dropbox","github","gitlab","docker","python","javascript","typescript","kotlin","haskell",
+    "fortran","pascal","matlab","django","angular","mongodb","postgres","terraform","jenkins","ansible"
+  ],
+  "Pop Culture": [
+    "avengers","batman","superman","spiderman","ironman","wolverine","deadpool","aquaman","catwoman","gotham",
+    "krypton","asgard","wakanda","avatar","titanic","skywalker","chewbacca","tatooine","mandalorian","hogwarts",
+    "hermione","dumbledore","voldemort","gryffindor","slytherin","quidditch","muggle","hagrid","potter","gandalf",
+    "gollum","hobbits","mordor","rivendell","aragorn","legolas","sauron","westeros","targaryen","lannister",
+    "winterfell","dothraki","khaleesi","daenerys","tyrion","hawkins","eleven","demogorgon","simpsons","springfield",
+    "futurama","seinfeld","friends","frasier","sopranos","heisenberg","pokemon","pikachu","charizard","nintendo",
+    "bowser","hyrule","minecraft","fortnite","roblox","tetris","pacman","metroid","disney","marvel",
+    "netflix","frozen","aladdin","tangled","encanto","cinderella","pinocchio","mufasa","scooby","garfield",
+    "snoopy","spongebob","barbie","oppenheimer","jurassic","terminator","matrix","inception","godfather","goodfellas",
+    "casablanca","gremlins","ghostbusters","beetlejuice","goonies","labyrinth","wednesday","bridgerton","yellowstone","succession",
+    "influencer","podcast","streamer","cosplay","fandom","sequel","prequel","reboot","blockbuster","oscars",
+    "grammys","paparazzi","tabloid","celebrity","sitcom","cartoon","trailer","premiere","franchise","bingewatch",
+    "fanfiction","shipping","superhero","villain","sidekick","protagonist","antihero","cliffhanger","plottwist","montage",
+    "flashback","voiceover","soundtrack","cameos","blooper","outtake","screenplay","director","producer","actress",
+    "audition","casting","rehearsal","backstage","matinee","cineplex","multiplex","claymation","stopmotion","broadway",
+    "musical","pantomime","vaudeville","comiccon","cosplayer","collectible","merchandise","figurine","boxset","trilogy",
+    "reunion","spinoff","crossover","adaptation","remake","nostalgia","throwback","trending","hashtag","unboxing",
+    "vlogging","youtuber","tiktoker","clickbait","catchphrase","quotable","iconic","legendary","stardom","limelight",
+    "spotlight","fanbase","groupie","autograph","memorabilia","billboard","platinum","baftas","sundance","cannes",
+    "hollywood","bollywood","tinseltown","telenovela","docuseries","reality","gameshow","talkshow","primetime","syndication"
+  ],
+  Cars: [
+    "toyota","nissan","subaru","mitsubishi","suzuki","hyundai","chevrolet","chrysler","cadillac","pontiac",
+    "oldsmobile","mercedes","porsche","volkswagen","ferrari","lamborghini","maserati","bugatti","lancia","renault",
+    "peugeot","citroen","jaguar","bentley","mclaren","rivian","polestar","infiniti","koenigsegg","pagani",
+    "alpine","abarth","hummer","fisker","delorean","packard","studebaker","desoto","hudson","willys",
+    "datsun","daihatsu","holden","vauxhall","triumph","morgan","maybach","peterbilt","kenworth","freightliner",
+    "corvette","mustang","camaro","challenger","charger","barracuda","firebird","thunderbird","impala","malibu",
+    "silverado","suburban","escalade","expedition","explorer","bronco","wrangler","cherokee","corolla","tacoma",
+    "tundra","highlander","sequoia","accord","odyssey","altima","sentra","maxima","pathfinder","outback",
+    "forester","impreza","legacy","elantra","sonata","telluride","sorento","sportage","countach","diablo",
+    "murcielago","aventador","huracan","gallardo","testarossa","berlinetta","spyder","carrera","boxster","cayenne",
+    "panamera","taycan","beetle","passat","tiguan","corrado","scirocco","clubman","countryman","discovery",
+    "engine","piston","cylinder","camshaft","crankshaft","radiator","alternator","carburetor","throttle","exhaust",
+    "muffler","catalytic","transmission","clutch","gearbox","driveshaft","differential","suspension","shocks","struts",
+    "brakes","rotors","calipers","chassis","bumper","fender","hubcap","spoiler","sunroof","tailgate",
+    "odometer","speedometer","dashboard","ignition","turbocharger","supercharger","horsepower","torque","mileage","diesel",
+    "gasoline","hybrid","electric","convertible","hatchback","minivan","pickup","roadster","limousine","steering",
+    "windshield","headlight","taillight","seatbelt","airbag","upholstery","leather","traction","drivetrain","manual",
+    "automatic","nascar","formula","drifting","muscle","vintage","dealership","showroom","mechanic","garage",
+    "junkyard","wheels","alloys","lugnuts","manifold","injector","sparkplug","distributor","flywheel","bearings",
+    "gaskets","coolant","antifreeze","lubricant","dipstick","carwash","detailing","aftermarket","lowrider","hotrod"
+  ],
+  Food: [
+    "spaghetti","lasagna","ravioli","linguine","fettuccine","macaroni","rigatoni","tortellini","gnocchi","risotto",
+    "carbonara","bolognese","marinara","alfredo","parmesan","mozzarella","ricotta","provolone","burrata","mascarpone",
+    "calzone","focaccia","ciabatta","bruschetta","antipasto","baguette","croissant","brioche","sourdough","pumpernickel",
+    "pretzel","muffin","biscuit","pancake","waffle","danish","strudel","eclair","macaron","meringue",
+    "tiramisu","cannoli","baklava","brownie","cupcake","cheesecake","shortcake","cobbler","crumble","custard",
+    "burrito","quesadilla","enchilada","tamales","nachos","guacamole","ceviche","empanada","churros","fajitas",
+    "tostada","chimichanga","tortilla","jalapeno","habanero","sashimi","tempura","teriyaki","yakitori","edamame",
+    "wasabi","bibimbap","bulgogi","kimchi","japchae","dumpling","wonton","eggroll","noodles","stirfry",
+    "springroll","padthai","rendang","congee","matcha","sriracha","hoisin","donburi","okonomiyaki","tonkatsu",
+    "masala","biryani","samosa","paneer","tandoori","vindaloo","chutney","lentils","chickpea","hummus",
+    "falafel","shawarma","kebabs","souvlaki","tzatziki","dolmades","spanakopita","moussaka","couscous","harissa",
+    "hamburger","cheeseburger","sandwich","reuben","pastrami","bologna","salami","prosciutto","pepperoni","chorizo",
+    "sausage","meatball","meatloaf","brisket","ribeye","sirloin","tenderloin","drumstick","croquette","schnitzel",
+    "barbecue","coleslaw","cornbread","stuffing","casserole","chowder","bisque","ratatouille","jambalaya","etouffee",
+    "poutine","pierogi","goulash","paella","gazpacho","avocado","tomato","potato","broccoli","cauliflower",
+    "asparagus","zucchini","eggplant","spinach","lettuce","cabbage","carrots","celery","cucumber","peppers",
+    "onions","garlic","ginger","cinnamon","vanilla","cherries","peaches","pineapple","raspberry","blueberry",
+    "strawberry","blackberry","watermelon","cantaloupe","honeydew","coconut","almonds","walnuts","pistachio","cashews",
+    "peanuts","apricot","mangoes","lychee","papaya","oatmeal","granola","yogurt","omelette","frittata",
+    "pudding","gelato","sorbet","sundae","milkshake","popcorn","caramel","toffee","marzipan","nougat"
+  ],
+  Celebrities: [
+    "brando","bogart","chaplin","monroe","hepburn","garland","heston","poitier","olivier","guinness",
+    "lemmon","matthau","cagney","dietrich","bardot","bacall","lansbury","redgrave","andrews","minnelli",
+    "streisand","newman","redford","hackman","douglas","sutherland","duvall","connery","stewart","burton",
+    "dicaprio","deniro","pacino","nicholson","freeman","denzel","cruise","clooney","eastwood","hoffman",
+    "travolta","whitaker","snipes","fishburne","cheadle","jackson","goldblum","malkovich","walken","buscemi",
+    "gandolfini","liotta","hopkins","neeson","kilmer","costner","brosnan","oldman","mckellen","rickman",
+    "serkis","mikkelsen","skarsgard","stallone","willis","gibson","reeves","statham","keaton","devito",
+    "murray","stiller","sandler","ferrell","carell","wilson","vaughn","franco","harrelson","rockwell",
+    "brolin","mcgregor","bardem","banderas","hemsworth","ruffalo","downey","renner","cumberbatch","hiddleston",
+    "reynolds","jackman","gosling","mcconaughey","gyllenhaal","pattinson","radcliffe","chalamet","holland","maguire",
+    "krasinski","boseman","kaluuya","mescal","butler","ledger","murphy","giamatti","streep","roberts",
+    "portman","johansson","lawrence","blanchett","winslet","theron","bullock","zellweger","swinton","mirren",
+    "thompson","watson","kidman","aniston","witherspoon","knightley","chastain","lively","beckinsale","mcadams",
+    "seyfried","fanning","zendaya","pfeiffer","hathaway","bening","moretz","sarandon","weaver","tomlin",
+    "midler","goldberg","spencer","sweeney","colman","barrymore","kudrow","paltrow","angelina","saoirse",
+    "robbie","larson","lupita","curtis","dunaway","crawford","mcdormand","bassett","spacek","foster",
+    "spielberg","scorsese","tarantino","cameron","coppola","zemeckis","fincher","villeneuve","howard","waititi",
+    "gerwig","kubrick","hitchcock","apatow","reitman","favreau","abrams","snyder","carpenter","craven",
+    "romero","rodriguez","soderbergh","cuaron","shyamalan","winfrey","fallon","letterman","kardashian","jenner",
+    "hilton","delevingne","ratajkowski","cronkite","blitzer","maddow","ramsay","bourdain","warhol","banksy"
+  ]
+};
+
+const MAX_MISSES = 6;
+const ALPHABET = "abcdefghijklmnopqrstuvwxyz";
+const ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+const ALL = "All";
+
+const wordEl = document.getElementById("word");
+const statusEl = document.getElementById("status");
+const keyboardEl = document.getElementById("keyboard");
+const againEl = document.getElementById("again");
+const figureEl = document.getElementById("figure");
+const categoriesEl = document.getElementById("categories");
+const stageEl = document.getElementById("stage");
+const titleEl = document.getElementById("title");
+const confettiEl = document.getElementById("confetti");
+const streakCurEl = document.getElementById("streakCur");
+const streakCurNumEl = document.getElementById("streakCurNum");
+const streakBestNumEl = document.getElementById("streakBestNum");
+
+// 8-bit pixel wordmark, drawn from a 5x7 bitmap font
+const GLYPHS = {
+  H: ["10001","10001","10001","11111","10001","10001","10001"],
+  A: ["01110","10001","10001","11111","10001","10001","10001"],
+  N: ["10001","11001","10101","10011","10001","10001","10001"],
+  G: ["01110","10001","10000","10111","10001","10001","01110"],
+  M: ["10001","11011","10101","10001","10001","10001","10001"]
+};
+(function buildTitle() {
+  const word = "HANGMAN", W = 5, H = 7, GAP = 1;
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${word.length * (W + GAP) - GAP} ${H}`);
+  svg.setAttribute("class", "pixeltitle");
+  word.split("").forEach((ch, li) => {
+    const g = document.createElementNS(ns, "g");
+    g.setAttribute("class", "glyph");
+    g.style.animationDelay = (li * 0.09) + "s";
+    GLYPHS[ch].forEach((row, r) => {
+      [...row].forEach((bit, c) => {
+        if (bit !== "1") return;
+        const px = document.createElementNS(ns, "rect");
+        px.setAttribute("x", li * (W + GAP) + c);
+        px.setAttribute("y", r);
+        px.setAttribute("width", 1);
+        px.setAttribute("height", 1);
+        g.appendChild(px);
+      });
+    });
+    svg.appendChild(g);
+  });
+  titleEl.appendChild(svg);
+})();
+
+// Streak state — persisted between sessions when storage is available
+let streak = 0;
+let best = 0;
+
+function loadStreak() {
+  try {
+    streak = Number(localStorage.getItem("hangman.streak")) || 0;
+    best = Number(localStorage.getItem("hangman.best")) || 0;
+  } catch (e) { /* file:// with storage disabled — play on without saving */ }
+  renderStreak();
+}
+
+function saveStreak() {
+  try {
+    localStorage.setItem("hangman.streak", String(streak));
+    localStorage.setItem("hangman.best", String(best));
+  } catch (e) { /* ignore */ }
+}
+
+function renderStreak(pulse) {
+  streakCurNumEl.textContent = streak;
+  streakBestNumEl.textContent = best;
+  streakCurEl.classList.toggle("hot", streak >= 3);
+  if (pulse) {
+    streakCurEl.classList.remove("pulse");
+    void streakCurEl.offsetWidth; // restart the animation
+    streakCurEl.classList.add("pulse");
+  }
+}
+
+// Facial expressions, drawn around the head centre at (140, 63)
+const INK = "#2b2338";
+const FACES = {
+  calm: `
+    <rect x="129" y="58" width="7" height="7" class="led"/>
+    <rect x="144" y="58" width="7" height="7" class="led"/>`,
+  worried: `
+    <rect x="128" y="56" width="9" height="2" class="led warn"/>
+    <rect x="143" y="56" width="9" height="2" class="led warn"/>
+    <rect x="130" y="60" width="6" height="5" class="led warn"/>
+    <rect x="144" y="60" width="6" height="5" class="led warn"/>`,
+  scared: `
+    <rect x="127" y="56" width="10" height="10" class="led alarm"/>
+    <rect x="130" y="59" width="4" height="4" fill="#07060f"/>
+    <rect x="143" y="56" width="10" height="10" class="led alarm"/>
+    <rect x="146" y="59" width="4" height="4" fill="#07060f"/>`,
+  happy: `
+    <rect x="127" y="62" width="4" height="4" class="led good"/>
+    <rect x="131" y="58" width="4" height="4" class="led good"/>
+    <rect x="135" y="62" width="4" height="4" class="led good"/>
+    <rect x="143" y="62" width="4" height="4" class="led good"/>
+    <rect x="147" y="58" width="4" height="4" class="led good"/>
+    <rect x="151" y="62" width="4" height="4" class="led good"/>`,
+  dead: `
+    <rect x="128" y="56" width="3" height="3" class="led dead"/>
+    <rect x="131" y="59" width="3" height="3" class="led dead"/>
+    <rect x="134" y="62" width="3" height="3" class="led dead"/>
+    <rect x="134" y="56" width="3" height="3" class="led dead"/>
+    <rect x="128" y="62" width="3" height="3" class="led dead"/>
+    <rect x="144" y="56" width="3" height="3" class="led dead"/>
+    <rect x="147" y="59" width="3" height="3" class="led dead"/>
+    <rect x="150" y="62" width="3" height="3" class="led dead"/>
+    <rect x="150" y="56" width="3" height="3" class="led dead"/>
+    <rect x="144" y="62" width="3" height="3" class="led dead"/>`
+};
+
+const faceEl = document.getElementById("face");
+const ropeEl = document.getElementById("rope");
+const shadowEl = document.querySelector(".groundshadow");
+
+function setFace(state) {
+  faceEl.innerHTML = FACES[state];
+}
+
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+function confetti() {
+  if (reducedMotion.matches) return; // no animation would ever finish, so don't spawn any
+  const colors = ["#ff2e88", "#00f0ff", "#a45cff", "#b6ff2e", "#ffd400"];
+  for (let i = 0; i < 70; i++) {
+    const bit = document.createElement("div");
+    bit.className = "bit";
+    bit.style.left = Math.random() * 98 + "vw";
+    bit.style.background = colors[Math.floor(Math.random() * colors.length)];
+    const secs = 1.8 + Math.random() * 1.6;
+    const delay = Math.random() * 0.5;
+    bit.style.animationDuration = secs + "s";
+    bit.style.animationDelay = delay + "s";
+    confettiEl.appendChild(bit);
+    bit.addEventListener("animationend", () => bit.remove());
+    // Belt and braces: if the animation never runs, clean up anyway
+    setTimeout(() => bit.remove(), (secs + delay) * 1000 + 500);
+  }
+}
+
+let category = ALL;
+let secret = "";
+let lastWord = "";
+let guessed = new Set();
+let misses = 0;
+let over = false;
+
+function pool() {
+  return category === ALL
+    ? Object.values(CATEGORIES).flat()
+    : CATEGORIES[category];
+}
+
+function pickWord() {
+  const words = pool();
+  let word;
+  do {
+    word = words[Math.floor(Math.random() * words.length)];
+  } while (word === lastWord && words.length > 1);
+  lastWord = word;
+  return word;
+}
+
+function startGame() {
+  secret = pickWord();
+  guessed = new Set();
+  misses = 0;
+  over = false;
+  againEl.hidden = true;
+  statusEl.className = "status";
+  figureEl.classList.remove("saved", "dead");
+  ropeEl.classList.remove("cut");
+  buildKeyboard();
+  render();
+}
+
+function buildCategories() {
+  categoriesEl.innerHTML = "";
+  for (const name of [ALL, ...Object.keys(CATEGORIES)]) {
+    const btn = document.createElement("button");
+    btn.className = "cat" + (name === category ? " active" : "");
+    btn.textContent = name;
+    btn.dataset.category = name;
+    btn.addEventListener("click", () => {
+      category = name;
+      buildCategories();
+      startGame();
+    });
+    categoriesEl.appendChild(btn);
+  }
+}
+
+function buildKeyboard() {
+  keyboardEl.innerHTML = "";
+  for (const row of ROWS) {
+    const rowEl = document.createElement("div");
+    rowEl.className = "row";
+    for (const ch of row) {
+      const btn = document.createElement("button");
+      btn.className = "key";
+      btn.textContent = ch.toUpperCase();
+      btn.dataset.letter = ch;
+      btn.addEventListener("click", () => guess(ch));
+      rowEl.appendChild(btn);
+    }
+    keyboardEl.appendChild(rowEl);
+  }
+}
+
+function guess(letter) {
+  if (over || guessed.has(letter) || !ALPHABET.includes(letter)) return;
+  guessed.add(letter);
+  const hit = secret.includes(letter);
+  if (!hit) {
+    misses++;
+    stageEl.classList.remove("shake");
+    void stageEl.offsetWidth; // restart the animation
+    stageEl.classList.add("shake");
+  }
+  checkEnd();
+  // win/lose stings are fired from checkEnd, so only cue the round-continues ones
+  if (!over) hit ? music.onCorrect() : music.onWrong();
+  render();
+}
+
+function won() {
+  return [...secret].every(ch => guessed.has(ch));
+}
+
+function categoryOf(word) {
+  for (const [name, words] of Object.entries(CATEGORIES)) {
+    if (words.includes(word)) return name;
+  }
+  return "";
+}
+
+const CHEERS = ["Nailed it!", "Too easy!", "Word wizard!", "Got it!", "Brilliant!", "Smooth!"];
+
+function checkEnd() {
+  if (won()) {
+    over = true;
+    streak++;
+    if (streak > best) best = streak;
+    saveStreak();
+    renderStreak(true);
+    confetti();
+    music.onWin();
+    const cheer = CHEERS[Math.floor(Math.random() * CHEERS.length)];
+    statusEl.className = "status win";
+    statusEl.innerHTML = "🎉 " + cheer + " <b>" + categoryOf(secret) + "</b>" +
+      (streak > 1 ? " · " + streak + " in a row!" : "");
+  } else if (misses >= MAX_MISSES) {
+    over = true;
+    const hadStreak = streak;
+    streak = 0;
+    saveStreak();
+    renderStreak(hadStreak > 0);
+    music.onLose();
+    statusEl.className = "status lose";
+    statusEl.innerHTML = "💀 The word was <b>" + secret.toUpperCase() +
+      "</b> (" + categoryOf(secret) + ")." +
+      (hadStreak > 1 ? " Streak of " + hadStreak + " broken!" : "");
+  }
+  if (over) againEl.hidden = false;
+}
+
+function render() {
+  wordEl.innerHTML = "";
+  for (const ch of secret) {
+    const span = document.createElement("span");
+    span.className = "letter";
+    if (guessed.has(ch)) {
+      span.textContent = ch.toUpperCase();
+      span.classList.add("filled");
+    } else if (over) {
+      span.textContent = ch.toUpperCase();
+      span.classList.add("miss");
+    } else {
+      span.innerHTML = "&nbsp;";
+    }
+    wordEl.appendChild(span);
+  }
+
+  // A win rescues him: the whole character appears, cut down and cheering.
+  const victory = over && won();
+  const partsShown = victory ? MAX_MISSES : misses;
+  figureEl.querySelectorAll("[data-part]").forEach(part => {
+    part.style.display = Number(part.dataset.part) < partsShown ? "" : "none";
+  });
+
+  figureEl.classList.toggle("saved", victory);
+  figureEl.classList.toggle("dead", over && !victory);
+  ropeEl.classList.toggle("cut", victory);
+  shadowEl.classList.toggle("show", victory);
+
+  setFace(
+    victory ? "happy" :
+    over ? "dead" :
+    misses >= 5 ? "scared" :
+    misses >= 3 ? "worried" : "calm"
+  );
+
+  keyboardEl.querySelectorAll("button.key").forEach(btn => {
+    const letter = btn.dataset.letter;
+    btn.disabled = over || guessed.has(letter);
+    btn.classList.toggle("hit", guessed.has(letter) && secret.includes(letter));
+    btn.classList.toggle("miss", guessed.has(letter) && !secret.includes(letter));
+  });
+
+  if (!over) {
+    const left = MAX_MISSES - misses;
+    statusEl.textContent = left + (left === 1 ? " guess left" : " guesses left") +
+      " · " + (category === ALL ? "All categories" : category);
+  }
+}
+
+/* ============================================================
+   HangmanMusic — a live-synthesized melodic progressive-house loop.
+   No audio files: pure oscillators, biquads and noise buffers, so it
+   works offline from a file:// page.
+
+   128 BPM, 48-bar loop (~90s):
+     0-3   intro      drums + bass build
+     4-11  main A     11-limit just intonation, neutral-third tonic
+     12-15 break 1    pads/arp ring, pad drifts up a quarter tone
+     16-23 main B     septimal/undecimal harmony (7/4, 11/8), busier lead
+     24-31 ALPHA      Wendy Carlos Alpha tuning — 78c steps, non-octave
+     32-39 main C     harmonic-seventh chords, biggest energy
+     40-47 outro      syntonic-comma drift resolving back to the tonic
+
+   Everything is tuned from ratios off A = 220 Hz. Nothing is quantised
+   to 12-TET at any point.
+   ============================================================ */
+
+const A0 = 220;                       // root
+const QT = Math.pow(2, 1 / 24);       // one quarter tone (50c)
+const COMMA = 81 / 80;                // syntonic comma (~21.5c)
+
+// Wendy Carlos Alpha: the pure fifth split into nine equal 78c steps.
+// It deliberately does not repeat at the octave.
+const ALPHA_STEP = 78;
+const alpha = k => Math.pow(2, (k * ALPHA_STEP) / 1200);
+
+// ---- chord sets, one bar each, cycling i - VI - III - V ----
+// A: neutral-third tonic (11/9 = 347c)
+const CH_A = [
+  { bass: 1,     tones: [1,     11 / 9, 3 / 2] },
+  { bass: 8 / 5, tones: [8 / 5, 2,      12 / 5] },
+  { bass: 6 / 5, tones: [6 / 5, 3 / 2,  9 / 5] },
+  { bass: 3 / 2, tones: [3 / 2, 15 / 8, 9 / 4] }
+];
+// B: undecimal — the 11/8 superfourth (551c) and septimal colour
+const CH_B = [
+  { bass: 1,     tones: [1,     11 / 9, 11 / 8, 3 / 2], pad: [1,     11 / 9, 3 / 2,  2] },
+  { bass: 8 / 5, tones: [8 / 5, 2,      11 / 5,  12 / 5], pad: [8 / 5, 2,      12 / 5] },
+  { bass: 6 / 5, tones: [6 / 5, 3 / 2,  21 / 10],        pad: [6 / 5, 3 / 2,  12 / 5] },
+  { bass: 3 / 2, tones: [3 / 2, 15 / 8, 21 / 8],         pad: [3 / 2, 15 / 8, 3] }
+];
+// C: harmonic sevenths (7/4 = 969c, flatter and sweeter than 12-TET)
+const CH_C = [
+  { bass: 1,     tones: [1,     11 / 9, 3 / 2,  7 / 4],   pad: [1,     11 / 9, 3 / 2,  2] },
+  { bass: 8 / 5, tones: [8 / 5, 2,      12 / 5, 14 / 5],  pad: [8 / 5, 2,      12 / 5] },
+  { bass: 6 / 5, tones: [6 / 5, 3 / 2,  9 / 5,  21 / 10], pad: [6 / 5, 3 / 2,  9 / 5] },
+  { bass: 3 / 2, tones: [3 / 2, 15 / 8, 9 / 4,  21 / 8],  pad: [3 / 2, 15 / 8, 9 / 4] }
+];
+// Alpha section: chords built from Alpha steps, not ratios
+const CH_ALPHA = [
+  { bass: 1,     tones: [alpha(0),  alpha(4), alpha(9)],  pad: [1, 3 / 2, 2] },
+  { bass: 1,     tones: [alpha(3),  alpha(7), alpha(12)], pad: [1, 3 / 2, 2] },
+  { bass: 3 / 4, tones: [alpha(-2), alpha(3), alpha(7)],  pad: [1, 3 / 2, 2] },
+  { bass: 1,     tones: [alpha(5),  alpha(9), alpha(14)], pad: [1, 3 / 2, 2] }
+];
+
+// melodic scales per section
+const SC_A = [1, 9 / 8, 11 / 9, 4 / 3, 3 / 2, 8 / 5, 9 / 5];              // neutral third
+const SC_B = [1, 9 / 8, 7 / 6, 11 / 8, 3 / 2, 13 / 8, 7 / 4];             // septimal + 13-limit
+const SC_C = [1, 9 / 8, 11 / 9, 4 / 3, 3 / 2, 5 / 3, 7 / 4];              // harmonic seventh
+const SC_ALPHA = [0, 2, 4, 5, 7, 9, 11].map(alpha);                       // Alpha degrees
+
+const LEAD_A = [
+  [7, null, null, 6, null, 4, null, null, 5, null, null, 4, null, null, null, null],
+  [4, null, 3, null, 2, null, null, null, 4, null, null, 2, null, 1, null, null],
+  [5, null, null, 4, null, 3, null, null, 2, null, 3, null, 4, null, null, null],
+  [2, null, 4, null, 5, null, 7, null, null, 6, null, 5, null, 4, null, null],
+  [7, null, null, 6, null, 4, null, null, 5, null, null, 7, null, null, null, null],
+  [4, null, 3, null, 2, null, null, null, 4, null, 2, null, 1, null, null, null],
+  [5, null, null, 7, null, 5, null, 4, null, 3, null, 2, null, null, null, null],
+  [2, null, 4, null, 5, null, 7, null, 9, null, null, 7, null, null, null, null]
+];
+const LEAD_B = [
+  [0, null, 2, null, 4, null, 2, 3, null, 4, null, 6, 4, null, 2, null],
+  [3, null, null, 2, 4, null, null, 6, null, 5, null, 4, null, 2, null, null],
+  [6, null, 4, null, 3, null, 5, null, 6, null, null, 4, 2, null, null, null],
+  [2, 3, null, 4, null, 6, null, 5, 4, null, 3, null, 2, null, null, null],
+  [0, null, 2, 4, null, 6, null, 4, 2, null, 4, null, 6, null, null, null],
+  [3, null, 5, null, 6, null, 4, null, 3, null, 2, null, 4, null, null, null],
+  [6, null, null, 5, 4, null, 3, null, 2, null, 4, null, 6, null, 4, null],
+  [4, null, 2, null, 0, null, null, 2, null, 4, null, 6, null, null, null, null]
+];
+const LEAD_C = [
+  [7, null, null, null, 6, null, null, 5, null, null, 4, null, null, null, null, null],
+  [5, null, null, 4, null, null, 3, null, 4, null, null, null, null, null, null, null],
+  [7, null, null, 8, null, null, 7, null, 6, null, null, 5, null, null, null, null],
+  [4, null, 5, null, 6, null, 7, null, null, null, 8, null, null, null, null, null],
+  [9, null, null, 8, null, 7, null, null, 6, null, null, 7, null, null, null, null],
+  [5, null, 6, null, 7, null, null, 5, null, 4, null, null, 3, null, null, null],
+  [7, null, 8, null, 9, null, null, 8, null, 7, null, 6, null, null, null, null],
+  [4, null, null, 6, null, null, 7, null, null, null, 9, null, null, null, null, null]
+];
+// sparse, eerie line for the Alpha section
+const LEAD_ALPHA = [
+  [4, null, null, null, null, null, 2, null, null, null, 5, null, null, null, null, null],
+  [null, null, 3, null, null, null, null, null, 6, null, null, null, 4, null, null, null],
+  [2, null, null, null, 4, null, null, null, null, null, 3, null, null, null, null, null],
+  [null, null, 5, null, null, null, 6, null, null, null, null, null, 4, null, 2, null],
+  [4, null, null, 6, null, null, null, null, 5, null, null, null, null, null, null, null],
+  [null, null, 2, null, null, null, 4, null, null, null, 6, null, null, null, null, null],
+  [3, null, null, null, null, null, 5, null, null, null, null, null, 2, null, null, null],
+  [6, null, null, 5, null, null, 4, null, null, null, 2, null, null, null, null, null]
+];
+
+const ARP_SEQ = [0, 1, 2, 3, 2, 1, 2, 3, 0, 1, 2, 3, 4, 3, 2, 1];
+const BASS_PAT = [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0];
+
+class HangmanMusic {
+  constructor() {
+    this.ctx = null;
+    this.playing = false;
+    this.volume = 0.35;
+    this.muted = false;
+    this.timer = null;
+    this.step = 0;
+    this.nextTime = 0;
+    this.BPM = 128;
+    this.STEP = 60 / this.BPM / 4;      // one sixteenth
+    this.LOOKAHEAD = 0.12;
+    this.BARS = 48;
+    this.STEPS = this.BARS * 16;
+  }
+
+  // ---------- graph ----------
+  init() {
+    if (this.ctx) return;
+    const C = window.AudioContext || window.webkitAudioContext;
+    const ctx = this.ctx = new C();
+
+    this.limiter = ctx.createDynamicsCompressor();
+    this.limiter.threshold.value = -8;
+    this.limiter.knee.value = 0;
+    this.limiter.ratio.value = 20;
+    this.limiter.attack.value = 0.003;
+    this.limiter.release.value = 0.25;
+    this.limiter.connect(ctx.destination);
+
+    this.master = ctx.createGain();
+    this.master.connect(this.limiter);
+
+    // melodic parts run through duck (sidechain pump); drums bypass it
+    this.duck = ctx.createGain();
+    this.duck.gain.value = 1;
+    this.duck.connect(this.master);
+
+    this.drums = ctx.createGain();
+    this.drums.gain.value = 0.9;
+    this.drums.connect(this.master);
+
+    this.verb = ctx.createConvolver();
+    this.verb.buffer = this.impulse(2.8, 2.4);
+    this.verbGain = ctx.createGain();
+    this.verbGain.gain.value = 0.9;
+    this.verb.connect(this.verbGain).connect(this.duck);
+
+    const d = this.STEP * 3;            // dotted-eighth ping-pong
+    this.dl = ctx.createDelay(1); this.dl.delayTime.value = d;
+    this.dr = ctx.createDelay(1); this.dr.delayTime.value = d;
+    const fb = ctx.createGain(); fb.gain.value = 0.34;
+    const pL = ctx.createStereoPanner(); pL.pan.value = -0.75;
+    const pR = ctx.createStereoPanner(); pR.pan.value = 0.75;
+    this.delaySend = ctx.createGain(); this.delaySend.gain.value = 0.42;
+    this.delaySend.connect(this.dl);
+    this.dl.connect(pL).connect(this.duck);
+    this.dl.connect(this.dr);
+    this.dr.connect(pR).connect(this.duck);
+    this.dr.connect(fb).connect(this.dl);
+
+    this.noiseBuf = this.noise(2);
+    this.applyVolume();
+  }
+
+  impulse(sec, decay) {
+    const ctx = this.ctx, n = Math.floor(ctx.sampleRate * sec);
+    const buf = ctx.createBuffer(2, n, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, decay);
+    }
+    return buf;
+  }
+
+  noise(sec) {
+    const ctx = this.ctx, n = Math.floor(ctx.sampleRate * sec);
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  noiseSrc() {
+    const s = this.ctx.createBufferSource();
+    s.buffer = this.noiseBuf;
+    s.loop = true;
+    s.playbackRate.value = 0.8 + Math.random() * 0.4;
+    return s;
+  }
+
+  // ---------- voices ----------
+  kick(t) {
+    const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(165, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.09);
+    g.gain.setValueAtTime(1.0, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+    o.connect(g).connect(this.drums);
+    o.start(t); o.stop(t + 0.34);
+    const c = this.noiseSrc(), cg = ctx.createGain(), cf = ctx.createBiquadFilter();
+    cf.type = "highpass"; cf.frequency.value = 1800;
+    cg.gain.setValueAtTime(0.35, t);
+    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+    c.connect(cf).connect(cg).connect(this.drums);
+    c.start(t); c.stop(t + 0.03);
+    this.pump(t);
+  }
+
+  pump(t) {
+    const g = this.duck.gain;
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(0.24, t + 0.014);
+    g.setTargetAtTime(1, t + 0.02, 0.045);
+  }
+
+  hat(t, open) {
+    const ctx = this.ctx, s = this.noiseSrc();
+    const f = ctx.createBiquadFilter(); f.type = "highpass";
+    f.frequency.value = open ? 6200 : 8600;
+    const g = ctx.createGain();
+    const dur = open ? 0.28 : 0.045;
+    const vol = open ? 0.20 : 0.13 + Math.random() * 0.06;
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    s.connect(f).connect(g).connect(this.drums);
+    s.start(t); s.stop(t + dur + 0.02);
+  }
+
+  clap(t) {
+    const ctx = this.ctx;
+    [0, 0.011, 0.023].forEach((off, i) => {
+      const s = this.noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      f.type = "bandpass"; f.frequency.value = 1250; f.Q.value = 1.6;
+      g.gain.setValueAtTime(0.34 - i * 0.06, t + off);
+      g.gain.exponentialRampToValueAtTime(0.001, t + off + 0.055);
+      s.connect(f).connect(g).connect(this.drums);
+      s.start(t + off); s.stop(t + off + 0.07);
+    });
+    const s = this.noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    f.type = "bandpass"; f.frequency.value = 1500; f.Q.value = 0.8;
+    g.gain.setValueAtTime(0.16, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.19);
+    s.connect(f).connect(g).connect(this.drums);
+    s.start(t + 0.03); s.stop(t + 0.21);
+  }
+
+  snare(t, vol = 0.32) {
+    const ctx = this.ctx;
+    const s = this.noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    f.type = "bandpass"; f.frequency.value = 1900; f.Q.value = 0.7;
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
+    s.connect(f).connect(g).connect(this.drums);
+    s.start(t); s.stop(t + 0.19);
+    const o = ctx.createOscillator(), og = ctx.createGain();
+    o.type = "triangle"; o.frequency.setValueAtTime(190, t);
+    o.frequency.exponentialRampToValueAtTime(120, t + 0.12);
+    og.gain.setValueAtTime(vol * 0.5, t);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+    o.connect(og).connect(this.drums);
+    o.start(t); o.stop(t + 0.15);
+  }
+
+  bass(t, f, dur) {
+    const ctx = this.ctx;
+    const flt = ctx.createBiquadFilter();
+    flt.type = "lowpass"; flt.Q.value = 7;
+    flt.frequency.setValueAtTime(1500, t);
+    flt.frequency.exponentialRampToValueAtTime(240, t + dur * 0.9);
+    const lfo = ctx.createOscillator(), lg = ctx.createGain();
+    lfo.frequency.value = 0.07; lg.gain.value = 260;
+    lfo.connect(lg).connect(flt.frequency);
+    lfo.start(t); lfo.stop(t + dur + 0.1);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.5, t + 0.014);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    flt.connect(g).connect(this.duck);
+
+    [-8, 8].forEach(cents => {
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.value = f * Math.pow(2, cents / 1200);
+      o.connect(flt);
+      o.start(t); o.stop(t + dur + 0.05);
+    });
+    const sub = ctx.createOscillator(), sg = ctx.createGain();
+    sub.type = "sine"; sub.frequency.value = f / 2;
+    sg.gain.setValueAtTime(0.0001, t);
+    sg.gain.linearRampToValueAtTime(0.28, t + 0.02);
+    sg.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    sub.connect(sg).connect(this.duck);
+    sub.start(t); sub.stop(t + dur + 0.05);
+  }
+
+  // driftCents: slowly detunes the whole pad (used for the comma drift)
+  pad(t, tones, dur, driftCents = 0, level = 0.075) {
+    const ctx = this.ctx;
+    const flt = ctx.createBiquadFilter();
+    flt.type = "lowpass"; flt.frequency.value = 950; flt.Q.value = 0.6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.45);
+    g.gain.setTargetAtTime(0.0001, t + dur * 0.7, 0.35);
+    flt.connect(g);
+    g.connect(this.duck);
+    g.connect(this.verb);
+    tones.forEach((r, i) => {
+      ["sawtooth", "triangle"].forEach((type, k) => {
+        const o = ctx.createOscillator();
+        o.type = type;
+        o.frequency.value = A0 * r * (k ? 1 : 0.5);
+        const base = (k ? 6 : -6) + (i - 1) * 3;
+        o.detune.setValueAtTime(base, t);
+        if (driftCents) o.detune.linearRampToValueAtTime(base + driftCents, t + dur);
+        o.connect(flt);
+        o.start(t); o.stop(t + dur + 0.6);
+      });
+    });
+  }
+
+  pluck(t, f, level = 0.10) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator(), g = ctx.createGain(), flt = ctx.createBiquadFilter();
+    o.type = "triangle"; o.frequency.value = f;
+    flt.type = "lowpass";
+    flt.frequency.setValueAtTime(4200, t);
+    flt.frequency.exponentialRampToValueAtTime(900, t + 0.2);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    o.connect(flt).connect(g);
+    g.connect(this.duck);
+    g.connect(this.delaySend);
+    g.connect(this.verb);
+    o.start(t); o.stop(t + 0.24);
+  }
+
+  // bend: 0 none, +1 scoop up a quarter tone, -1 fall a quarter tone
+  lead(t, f, dur, bend = 0, level = 0.13) {
+    const ctx = this.ctx;
+    const flt = ctx.createBiquadFilter();
+    flt.type = "lowpass"; flt.Q.value = 4;
+    flt.frequency.setValueAtTime(5200, t);
+    flt.frequency.exponentialRampToValueAtTime(1400, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(level, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    flt.connect(g);
+    g.connect(this.duck);
+    g.connect(this.verb);
+    [["square", 0], ["sawtooth", 7]].forEach(([type, det]) => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.detune.value = det;
+      if (bend > 0) {
+        o.frequency.setValueAtTime(f / QT, t);
+        o.frequency.setTargetAtTime(f, t, 0.035);
+      } else if (bend < 0) {
+        o.frequency.setValueAtTime(f, t);
+        o.frequency.setTargetAtTime(f / QT, t + dur * 0.45, 0.06);
+      } else {
+        o.frequency.setValueAtTime(f, t);
+      }
+      o.connect(flt);
+      o.start(t); o.stop(t + dur + 0.05);
+    });
+  }
+
+  // Warm consonant bed under the whole loop. Pure octaves of the tonic only,
+  // so it stays sweet against every chord — this is what keeps the microtonal
+  // sections from feeling harsh.
+  drone(t, dur) {
+    const ctx = this.ctx;
+    const flt = ctx.createBiquadFilter();
+    flt.type = "lowpass"; flt.frequency.value = 700; flt.Q.value = 0.4;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.075, t + 1.2);
+    g.gain.setTargetAtTime(0.0001, t + dur * 0.88, 0.55);
+    flt.connect(g);
+    g.connect(this.duck);
+    g.connect(this.verb);
+    [[A0 / 2, "triangle", -5], [A0 / 2, "sine", 5], [A0, "sine", 0]].forEach(([f, type, det]) => {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.value = f;
+      o.detune.value = det;                 // gentle chorus, no beating against the harmony
+      o.connect(flt);
+      o.start(t); o.stop(t + dur + 1.2);
+    });
+  }
+
+  // sweep used to hand over between sections
+  riser(t, dur, up = true) {
+    const ctx = this.ctx;
+    const s = this.noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    f.type = "bandpass"; f.Q.value = 3;
+    f.frequency.setValueAtTime(up ? 400 : 6000, t);
+    f.frequency.exponentialRampToValueAtTime(up ? 6000 : 400, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.14, t + dur * 0.85);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.1);
+    s.connect(f).connect(g).connect(this.duck);
+    s.start(t); s.stop(t + dur + 0.15);
+  }
+
+  // ---------- sequencing ----------
+  section(bar) {
+    if (bar < 4) return "intro";
+    if (bar < 12) return "mainA";
+    if (bar < 16) return "break1";
+    if (bar < 24) return "mainB";
+    if (bar < 32) return "alpha";
+    if (bar < 40) return "mainC";
+    return "outro";
+  }
+
+  chordsFor(sec) {
+    if (sec === "mainB") return CH_B;
+    if (sec === "alpha") return CH_ALPHA;
+    if (sec === "mainC" || sec === "outro") return CH_C;
+    return CH_A;
+  }
+
+  scaleFor(sec) {
+    if (sec === "mainB") return SC_B;
+    if (sec === "alpha") return SC_ALPHA;
+    if (sec === "mainC") return SC_C;
+    return SC_A;
+  }
+
+  degFreq(scale, d) {
+    const i = ((d % scale.length) + scale.length) % scale.length;
+    return A0 * scale[i] * Math.pow(2, Math.floor(d / scale.length));
+  }
+
+  scheduleStep(s, t) {
+    const bar = (s / 16) | 0, six = s % 16;
+    const sec = this.section(bar);
+    const chords = this.chordsFor(sec);
+    const chord = chords[bar % 4];
+    const scale = this.scaleFor(sec);
+    const drums = sec !== "break1";
+    const alphaSec = sec === "alpha";
+
+    // warm tonic drone, re-triggered every 4 bars so it never drops out
+    if (six === 0 && bar % 4 === 0) this.drone(t, this.STEP * 16 * 4 * 1.06);
+
+    // ---- drums ----
+    if (drums) {
+      if (alphaSec) {
+        // half-time: the Alpha section floats
+        if (six === 0) this.kick(t);
+        if (six === 8) { this.snare(t, 0.24); this.kick(t); }
+        if (six % 4 === 2) this.hat(t, false);
+      } else if (sec === "outro") {
+        if (six % 4 === 0 && bar < 45) this.kick(t);
+        if (six % 2 === 0 && bar < 44) this.hat(t, false);
+        if ((six === 4 || six === 12) && bar < 43) this.clap(t);
+      } else {
+        if (six % 4 === 0) this.kick(t);
+        if (bar >= 1) this.hat(t, false);
+        if (bar >= 2 && six % 4 === 2) this.hat(t, true);
+        if (bar >= 3 && (six === 4 || six === 12)) { this.clap(t); this.snare(t); }
+        if ((bar === 3 || bar === 11 || bar === 23 || bar === 39) && six >= 12) {
+          this.snare(t, 0.18 + (six - 12) * 0.09);
+        }
+      }
+    }
+
+    // ---- bass ----
+    if (drums) {
+      if (alphaSec) {
+        if (six === 0 || six === 6 || six === 10) this.bass(t, A0 * chord.bass / 4, this.STEP * 3);
+      } else if (BASS_PAT[six]) {
+        this.bass(t, A0 * chord.bass / 4, this.STEP * 1.5);
+      }
+    }
+
+    // ---- pads ----
+    if (six === 0 && sec !== "intro") {
+      // break 1 drifts up a quarter tone; the outro drifts by a syntonic comma
+      let drift = 0;
+      if (sec === "break1") drift = 50 * ((bar - 12) / 3);
+      if (sec === "outro") drift = 1200 * Math.log2(COMMA) * (1 - (bar - 40) / 7);
+      const level = alphaSec ? 0.095 : sec === "outro" ? 0.085 : 0.075;
+      this.pad(t, chord.pad || chord.tones, this.STEP * 16, drift, level);
+    }
+
+    // ---- arp ----
+    if (sec !== "intro") {
+      const v = ARP_SEQ[six];
+      const tone = chord.tones[v % chord.tones.length] * Math.pow(2, 1 + ((v / 3) | 0));
+      // in Alpha the arp climbs in 78c steps instead of octaves
+      const f = alphaSec ? A0 * chord.tones[v % chord.tones.length] * alpha(9 + (v % 3) * 4)
+                         : A0 * tone;
+      if (!alphaSec || six % 2 === 0) this.pluck(t, f, alphaSec ? 0.085 : 0.10);
+    }
+
+    // ---- lead ----
+    let pat = null, idx = 0;
+    if (sec === "mainA") { pat = LEAD_A; idx = bar - 4; }
+    else if (sec === "mainB") { pat = LEAD_B; idx = bar - 16; }
+    else if (sec === "alpha") { pat = LEAD_ALPHA; idx = bar - 24; }
+    else if (sec === "mainC") { pat = LEAD_C; idx = bar - 32; }
+    if (pat) {
+      const d = pat[idx][six];
+      if (d !== null && d !== undefined) {
+        // lean into the microtones: A scoops on downbeats, B bends most notes,
+        // Alpha alternates scoop/fall, C falls at phrase ends
+        let bend = 0;
+        if (sec === "mainA") bend = six % 8 === 0 ? 1 : 0;
+        else if (sec === "mainB") bend = six % 4 === 0 ? 1 : six % 4 === 2 ? -1 : 0;
+        else if (sec === "alpha") bend = six % 8 === 0 ? 1 : six % 16 === 10 ? -1 : 0;
+        else if (sec === "mainC") bend = six >= 10 ? -1 : six % 8 === 0 ? 1 : 0;
+        const oct = sec === "alpha" ? 1 : 2;
+        this.lead(t, this.degFreq(scale, d) * oct, this.STEP * 2.2, bend,
+                  sec === "alpha" ? 0.10 : 0.13);
+      }
+    }
+
+    // ---- section hand-overs ----
+    if (bar === 23 && six === 8) this.riser(t, this.STEP * 8, true);
+    if (bar === 31 && six === 8) this.riser(t, this.STEP * 8, false);
+    if (bar === 15 && six === 12) this.riser(t, this.STEP * 4, true);
+  }
+
+  tick() {
+    if (!this.ctx) return;
+    while (this.nextTime < this.ctx.currentTime + this.LOOKAHEAD) {
+      this.scheduleStep(this.step, this.nextTime);
+      this.nextTime += this.STEP;
+      this.step = (this.step + 1) % this.STEPS;
+    }
+  }
+
+  // ---------- transport ----------
+  start() {
+    this.init();
+    this.ctx.resume();
+    this.applyVolume();
+    this.step = 0;
+    this.nextTime = this.ctx.currentTime + 0.08;
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.tick(), 25);
+    this.playing = true;
+  }
+
+  stop() {
+    clearInterval(this.timer);
+    this.timer = null;
+    this.playing = false;
+    if (this.ctx) this.ctx.suspend();
+  }
+
+  setVolume(v) { this.volume = Math.min(1, Math.max(0, v)); this.applyVolume(); }
+  setMuted(m) { this.muted = !!m; this.applyVolume(); }
+  applyVolume() {
+    if (this.master) this.master.gain.value = this.muted ? 0 : this.volume * 0.55;
+  }
+
+  // ---------- game hooks ----------
+  get live() { return this.ctx && this.ctx.state === "running" && !this.muted; }
+  barNow() { return ((this.step / 16) | 0) % this.BARS; }
+  chordNow() {
+    const bar = this.barNow();
+    return this.chordsFor(this.section(bar))[bar % 4];
+  }
+
+  onCorrect() {                       // bright rising flourish in the current tuning
+    if (!this.live) return;
+    const t = this.ctx.currentTime, c = this.chordNow();
+    [0, 1, 2, 0, 1].forEach((v, i) => {
+      const r = c.tones[v % c.tones.length];
+      this.pluck(t + i * 0.045, A0 * r * Math.pow(2, 2 + (i > 2 ? 1 : 0)));
+    });
+  }
+
+  onWrong() {                         // quarter-tone cluster stab
+    if (!this.live) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const flt = ctx.createBiquadFilter();
+    flt.type = "lowpass"; flt.Q.value = 6;
+    flt.frequency.setValueAtTime(2600, t);
+    flt.frequency.exponentialRampToValueAtTime(320, t + 0.42);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.16, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+    flt.connect(g).connect(this.duck);
+    const base = A0 * 8 / 5;
+    [base, base * QT, base * 11 / 8].forEach(f => {
+      const o = ctx.createOscillator();
+      o.type = "sawtooth"; o.frequency.setValueAtTime(f, t);
+      o.frequency.setTargetAtTime(f / QT, t + 0.05, 0.2);
+      o.connect(flt); o.start(t); o.stop(t + 0.5);
+    });
+  }
+
+  onWin() {                           // riser + harmonic-seventh chord
+    if (!this.live) return;
+    const t = this.ctx.currentTime;
+    this.riser(t, 0.9, true);
+    [1, 6 / 5, 3 / 2, 7 / 4, 2, 12 / 5].forEach((r, i) => {
+      this.pluck(t + i * 0.075, A0 * r * 2);
+    });
+    this.pad(t + 0.5, [1, 5 / 4, 3 / 2, 7 / 4], 2.0);
+  }
+
+  onLose() {                          // sag down through four quarter tones
+    if (!this.live) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const flt = ctx.createBiquadFilter();
+    flt.type = "lowpass"; flt.Q.value = 3;
+    flt.frequency.setValueAtTime(2200, t);
+    flt.frequency.exponentialRampToValueAtTime(180, t + 1.3);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.2, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
+    flt.connect(g).connect(this.duck);
+    const f0 = A0 * 11 / 9;
+    [["sawtooth", 0], ["square", -6]].forEach(([type, det]) => {
+      const o = ctx.createOscillator();
+      o.type = type; o.detune.value = det;
+      o.frequency.setValueAtTime(f0, t);
+      [1, 2, 3, 4].forEach(k => {
+        o.frequency.setTargetAtTime(f0 / Math.pow(QT, k), t + k * 0.22, 0.09);
+      });
+      o.connect(flt); o.start(t); o.stop(t + 1.45);
+    });
+  }
+}
+
+const music = new HangmanMusic();
+
+/* ---- wire the sidebar controls ---- */
+const musicToggle = document.getElementById("musicToggle");
+const musicIcon = document.getElementById("musicIcon");
+const musicLabel = document.getElementById("musicLabel");
+const muteBtn = document.getElementById("muteBtn");
+const volumeEl = document.getElementById("volume");
+const volNumEl = document.getElementById("volNum");
+
+function paintAudioUI() {
+  volNumEl.textContent = Math.round(music.volume * 100);
+  const off = music.muted || music.volume === 0;
+  muteBtn.textContent = off ? "🔇" : "🔊";
+  muteBtn.classList.toggle("muted", music.muted);
+  musicToggle.classList.toggle("on", music.playing);
+  musicToggle.setAttribute("aria-pressed", music.playing ? "true" : "false");
+  musicIcon.textContent = music.playing ? "⏸" : "▶";
+  musicLabel.textContent = music.playing ? "Pause Music" : "Play Music";
+}
+
+function saveAudio() {
+  try {
+    localStorage.setItem("hangman.music", music.playing ? "1" : "0");
+    localStorage.setItem("hangman.vol", String(music.volume));
+    localStorage.setItem("hangman.muted", music.muted ? "1" : "0");
+  } catch (e) { /* ignore */ }
+}
+
+function loadAudio() {
+  try {
+    const v = localStorage.getItem("hangman.vol");
+    if (v !== null) music.setVolume(Number(v));
+    music.setMuted(localStorage.getItem("hangman.muted") === "1");
+    volumeEl.value = Math.round(music.volume * 100);
+    // Browsers block audio until the user interacts, so a saved "on"
+    // preference waits for the first click or keypress.
+    if (localStorage.getItem("hangman.music") === "1") armAutoStart();
+  } catch (e) { /* ignore */ }
+  paintAudioUI();
+}
+
+function armAutoStart() {
+  const go = () => {
+    document.removeEventListener("click", go);
+    document.removeEventListener("keydown", go);
+    music.start();
+    paintAudioUI();
+  };
+  document.addEventListener("click", go);
+  document.addEventListener("keydown", go);
+}
+
+musicToggle.addEventListener("click", () => {
+  music.playing ? music.stop() : music.start();
+  paintAudioUI();
+  saveAudio();
+});
+muteBtn.addEventListener("click", () => {
+  music.setMuted(!music.muted);
+  paintAudioUI();
+  saveAudio();
+});
+volumeEl.addEventListener("input", () => {
+  music.setVolume(Number(volumeEl.value) / 100);
+  if (music.volume > 0) music.setMuted(false);
+  paintAudioUI();
+  saveAudio();
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && over) { startGame(); return; }
+  const ch = e.key.toLowerCase();
+  if (ch.length === 1 && ALPHABET.includes(ch)) guess(ch);
+});
+
+againEl.addEventListener("click", startGame);
+
+loadStreak();
+loadAudio();
+buildCategories();
+startGame();
+
+/* ============================================================
+   Phone app plumbing: offline install + touch-friendly audio start.
+   ============================================================ */
+
+// Service workers only run over https:// or localhost — never file://,
+// so guard the call rather than throwing on a local double-click.
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => { /* offline install unavailable */ });
+  });
+}
+
+// iOS and Android both need a real gesture before audio can start;
+// touchend counts, and plain clicks/keys are already handled elsewhere.
+(function primeAudioForTouch() {
+  const prime = () => {
+    document.removeEventListener("touchend", prime);
+    if (music.ctx && music.ctx.state === "suspended" && music.playing) music.ctx.resume();
+  };
+  document.addEventListener("touchend", prime, { passive: true });
+})();
+
+// Stop iOS double-tap zoom on the keyboard without killing the taps themselves.
+(function killDoubleTapZoom() {
+  let last = 0;
+  document.addEventListener("touchend", e => {
+    const now = Date.now();
+    if (now - last < 320 && e.target.closest("button")) e.preventDefault();
+    last = now;
+  }, { passive: false });
+})();
+
+// Pause the loop when the app is backgrounded so it doesn't drain battery.
+document.addEventListener("visibilitychange", () => {
+  if (!music.ctx) return;
+  if (document.hidden) {
+    if (music.playing) music.ctx.suspend();
+  } else if (music.playing) {
+    music.ctx.resume();
+  }
+});
+</script>
+</body>
+</html>
