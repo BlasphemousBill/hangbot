@@ -131,11 +131,34 @@
 
   @media (max-width: 860px) {
     .layout { grid-template-columns: 1fr; justify-items: center; }
-    .side { width: 100%; max-width: 620px; }
+    /* grid items also default to min-width:auto (content-sized), which can
+       push .side wider than its track before overflow-x:auto ever applies */
+    .side { width: 100%; max-width: 620px; min-width: 0; }
     .center { order: -1; }
     .side.left { order: 0; }
     .side.right { order: 1; }
-    .categories { flex-direction: row !important; flex-wrap: wrap; justify-content: center; }
+    /* category chips scroll horizontally instead of wrapping into a tall
+       grid — that grid used to push the keyboard well below the fold */
+    .categories {
+      flex-direction: row !important;
+      flex-wrap: nowrap;
+      /* flex items default to min-width:auto (sized to their content), which
+         stops overflow-x:auto from ever kicking in and leaks the scroll onto
+         the whole page instead of staying inside this chip strip */
+      min-width: 0;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x proximity;
+      justify-content: flex-start;
+      padding: 2px 2px 5px;
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+      -webkit-mask-image: linear-gradient(to right, #000 92%, transparent);
+      mask-image: linear-gradient(to right, #000 92%, transparent);
+    }
+    .categories::-webkit-scrollbar { display: none; }
+    button.cat { flex: 0 0 auto; scroll-snap-align: start; }
     .streaks { flex-direction: row !important; justify-content: center; }
     .streak { flex: 0 1 auto !important; }
   }
@@ -373,10 +396,10 @@
 
   .hint { font-size: 0.6rem; letter-spacing: 0.14em; color: var(--muted); opacity: 0.75; }
 
-  /* ---- music ---- */
+  /* ---- audio mixer: music and sfx are independent buses ---- */
   .musicbox {
-    display: flex; flex-direction: column; gap: 9px;
-    padding: 11px;
+    display: flex; flex-direction: column; gap: 7px;
+    padding: 10px;
     background: var(--panel);
     box-shadow: inset -3px -3px 0 rgba(0,0,0,0.5), inset 3px 3px 0 rgba(255,255,255,0.06), 0 0 0 2px var(--edge);
   }
@@ -399,19 +422,22 @@
     box-shadow: inset -3px -3px 0 rgba(0,0,0,0.35), inset 3px 3px 0 rgba(255,255,255,0.35),
                 0 0 0 2px #a6ffcd, 0 0 16px rgba(57,255,136,0.5);
   }
-  .volrow { display: flex; align-items: center; gap: 8px; }
+  /* one row per channel: label | mute | slider | percent, all inline to stay compact */
+  .mixrow { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 6px; }
+  .mixlabel { font-size: 0.55rem; letter-spacing: 0.08em; color: var(--muted); }
+  .mixval { font-size: 0.55rem; color: var(--muted); min-width: 2.4em; text-align: right; }
   .mutebtn {
     flex: 0 0 auto;
-    width: 30px; height: 30px;
-    font-size: 0.85rem;
+    width: 26px; height: 26px;
+    font-size: 0.72rem;
     background: var(--panel2);
     border: 0; border-radius: 0;
     cursor: pointer;
     box-shadow: inset -2px -2px 0 rgba(0,0,0,0.5), 0 0 0 2px var(--edge);
   }
   .mutebtn.muted { opacity: 0.45; }
-  #volume { flex: 1 1 auto; min-width: 0; accent-color: var(--pink); cursor: pointer; }
-  .volval { font-size: 0.58rem; letter-spacing: 0.14em; color: var(--muted); text-align: center; }
+  .mixslider { width: 100%; min-width: 0; accent-color: var(--pink); cursor: pointer; }
+  #sfxVolume.mixslider { accent-color: var(--cyan); }
 
   /* ---- confetti ---- */
   #confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 10; }
@@ -430,11 +456,25 @@
     button.key { height: clamp(44px, 11vw, 54px); }   /* 44px minimum tap target */
     button.cat { padding: 13px 10px; font-size: 0.7rem; }
     .musicbtn { padding: 13px 8px; }
-    .mutebtn { width: 38px; height: 38px; }
-    #volume { height: 26px; }
+    .mutebtn { width: 36px; height: 36px; }
+    .mixslider { height: 26px; }
     button.again { padding: 16px 26px; }
   }
   /* phone in landscape: shrink the board so the keyboard still fits */
+  /* phones specifically (not tablets): shrink the title and board, which
+     were sized generously enough that categories/streak/music landed well
+     below the fold and needed a lot of scrolling to reach */
+  @media (max-width: 480px) {
+    body { gap: 10px; }
+    .layout { gap: 10px; }
+    .side { gap: 7px; }
+    .titlebar { gap: 6px; }
+    .titlebar > svg { width: 60px; height: 70px; }
+    .pixeltitle { width: clamp(120px, 48vw, 230px); }
+    .stage { padding: 8px 14px; }
+    .stage svg { width: clamp(148px, 42vw, 430px); }
+  }
+
   @media (max-height: 520px) and (orientation: landscape) {
     .stage svg { width: clamp(150px, 22vh, 240px); }
     .stage { padding: 8px 14px; }
@@ -729,11 +769,18 @@
       <button id="musicToggle" class="musicbtn" aria-pressed="false">
         <span id="musicIcon">▶</span> <span id="musicLabel">Play Music</span>
       </button>
-      <div class="volrow">
-        <button id="muteBtn" class="mutebtn" title="Mute">🔊</button>
-        <input id="volume" type="range" min="0" max="100" value="35" aria-label="Volume">
+      <div class="mixrow">
+        <span class="mixlabel">Mus</span>
+        <button id="musicMuteBtn" class="mutebtn" title="Mute music">🔊</button>
+        <input id="musicVolume" class="mixslider" type="range" min="0" max="100" value="35" aria-label="Music volume">
+        <span class="mixval" id="musicVolNum">35%</span>
       </div>
-      <div class="volval"><span id="volNum">35</span>%</div>
+      <div class="mixrow">
+        <span class="mixlabel">Sfx</span>
+        <button id="sfxMuteBtn" class="mutebtn" title="Mute sound effects">🔊</button>
+        <input id="sfxVolume" class="mixslider" type="range" min="0" max="100" value="70" aria-label="Sound effects volume">
+        <span class="mixval" id="sfxVolNum">70%</span>
+      </div>
     </div>
   </aside>
 
@@ -1378,8 +1425,10 @@ class HangmanMusic {
   constructor() {
     this.ctx = null;
     this.playing = false;
-    this.volume = 0.35;
-    this.muted = false;
+    this.musicVolume = 0.35;
+    this.musicMuted = false;
+    this.sfxVolume = 0.7;
+    this.sfxMuted = false;
     this.timer = null;
     this.step = 0;
     this.nextTime = 0;
@@ -1404,17 +1453,22 @@ class HangmanMusic {
     this.limiter.release.value = 0.25;
     this.limiter.connect(ctx.destination);
 
-    this.master = ctx.createGain();
-    this.master.connect(this.limiter);
+    // two independent buses so music and sound effects can be muted and
+    // volumed separately; both still land on the same limiter/destination
+    this.musicGain = ctx.createGain();
+    this.musicGain.connect(this.limiter);
+    this.sfxGain = ctx.createGain();
+    this.sfxGain.connect(this.limiter);
 
-    // melodic parts run through duck (sidechain pump); drums bypass it
+    // melodic parts run through duck (sidechain pump); drums bypass it.
+    // both belong to the music bus — the game-event hooks never use these.
     this.duck = ctx.createGain();
     this.duck.gain.value = 1;
-    this.duck.connect(this.master);
+    this.duck.connect(this.musicGain);
 
     this.drums = ctx.createGain();
     this.drums.gain.value = 0.9;
-    this.drums.connect(this.master);
+    this.drums.connect(this.musicGain);
 
     this.verb = ctx.createConvolver();
     this.verb.buffer = this.impulse(2.8, 2.4);
@@ -1436,7 +1490,16 @@ class HangmanMusic {
     this.dr.connect(fb).connect(this.dl);
 
     this.noiseBuf = this.noise(2);
-    this.applyVolume();
+    this.applyMusicVolume();
+    this.applySfxVolume();
+  }
+
+  // Creates the audio graph if needed and wakes it from a suspended state.
+  // Call this from anything the user directly touches — phones only allow
+  // audio to start from a real gesture, and this covers both channels.
+  ensureAudio() {
+    this.init();
+    if (this.ctx.state !== "running") this.ctx.resume();
   }
 
   impulse(sec, decay) {
@@ -1574,7 +1637,7 @@ class HangmanMusic {
   }
 
   // driftCents: slowly detunes the whole pad (used for the comma drift)
-  pad(t, tones, dur, driftCents = 0, level = 0.075) {
+  pad(t, tones, dur, driftCents = 0, level = 0.075, sfx = false) {
     const ctx = this.ctx;
     const flt = ctx.createBiquadFilter();
     flt.type = "lowpass"; flt.frequency.value = 950; flt.Q.value = 0.6;
@@ -1583,8 +1646,12 @@ class HangmanMusic {
     g.gain.linearRampToValueAtTime(level, t + 0.45);
     g.gain.setTargetAtTime(0.0001, t + dur * 0.7, 0.35);
     flt.connect(g);
-    g.connect(this.duck);
-    g.connect(this.verb);
+    if (sfx) {
+      g.connect(this.sfxGain);
+    } else {
+      g.connect(this.duck);
+      g.connect(this.verb);
+    }
     tones.forEach((r, i) => {
       ["sawtooth", "triangle"].forEach((type, k) => {
         const o = ctx.createOscillator();
@@ -1599,7 +1666,7 @@ class HangmanMusic {
     });
   }
 
-  pluck(t, f, level = 0.10) {
+  pluck(t, f, level = 0.10, sfx = false) {
     const ctx = this.ctx;
     const o = ctx.createOscillator(), g = ctx.createGain(), flt = ctx.createBiquadFilter();
     o.type = "triangle"; o.frequency.value = f;
@@ -1610,9 +1677,13 @@ class HangmanMusic {
     g.gain.linearRampToValueAtTime(level, t + 0.006);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
     o.connect(flt).connect(g);
-    g.connect(this.duck);
-    g.connect(this.delaySend);
-    g.connect(this.verb);
+    if (sfx) {
+      g.connect(this.sfxGain);
+    } else {
+      g.connect(this.duck);
+      g.connect(this.delaySend);
+      g.connect(this.verb);
+    }
     o.start(t); o.stop(t + 0.24);
   }
 
@@ -1673,7 +1744,7 @@ class HangmanMusic {
   }
 
   // sweep used to hand over between sections
-  riser(t, dur, up = true) {
+  riser(t, dur, up = true, sfx = false) {
     const ctx = this.ctx;
     const s = this.noiseSrc(), f = ctx.createBiquadFilter(), g = ctx.createGain();
     f.type = "bandpass"; f.Q.value = 3;
@@ -1682,7 +1753,7 @@ class HangmanMusic {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(0.14, t + dur * 0.85);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur + 0.1);
-    s.connect(f).connect(g).connect(this.duck);
+    s.connect(f).connect(g).connect(sfx ? this.sfxGain : this.duck);
     s.start(t); s.stop(t + dur + 0.15);
   }
 
@@ -1818,9 +1889,7 @@ class HangmanMusic {
 
   // ---------- transport ----------
   start() {
-    this.init();
-    this.ctx.resume();
-    this.applyVolume();
+    this.ensureAudio();
     this.step = 0;
     this.nextTime = this.ctx.currentTime + 0.08;
     clearInterval(this.timer);
@@ -1832,17 +1901,24 @@ class HangmanMusic {
     clearInterval(this.timer);
     this.timer = null;
     this.playing = false;
-    if (this.ctx) this.ctx.suspend();
+    // Deliberately not suspending the AudioContext here — sound effects
+    // are a separate bus and should keep working while music is paused.
   }
 
-  setVolume(v) { this.volume = Math.min(1, Math.max(0, v)); this.applyVolume(); }
-  setMuted(m) { this.muted = !!m; this.applyVolume(); }
-  applyVolume() {
-    if (this.master) this.master.gain.value = this.muted ? 0 : this.volume * 0.55;
+  setMusicVolume(v) { this.musicVolume = Math.min(1, Math.max(0, v)); this.applyMusicVolume(); }
+  setMusicMuted(m) { this.musicMuted = !!m; this.applyMusicVolume(); }
+  applyMusicVolume() {
+    if (this.musicGain) this.musicGain.gain.value = this.musicMuted ? 0 : this.musicVolume * 0.55;
   }
 
-  // ---------- game hooks ----------
-  get live() { return this.ctx && this.ctx.state === "running" && !this.muted; }
+  setSfxVolume(v) { this.sfxVolume = Math.min(1, Math.max(0, v)); this.applySfxVolume(); }
+  setSfxMuted(m) { this.sfxMuted = !!m; this.applySfxVolume(); }
+  applySfxVolume() {
+    if (this.sfxGain) this.sfxGain.gain.value = this.sfxMuted ? 0 : this.sfxVolume * 0.9;
+  }
+
+  // ---------- game hooks (sound effects — independent of the music bus) ----------
+  get sfxLive() { return !!this.ctx && !this.sfxMuted && this.sfxVolume > 0; }
   barNow() { return ((this.step / 16) | 0) % this.BARS; }
   chordNow() {
     const bar = this.barNow();
@@ -1850,16 +1926,18 @@ class HangmanMusic {
   }
 
   onCorrect() {                       // bright rising flourish in the current tuning
-    if (!this.live) return;
+    if (!this.sfxLive) return;
+    if (this.ctx.state === "suspended") this.ctx.resume();
     const t = this.ctx.currentTime, c = this.chordNow();
     [0, 1, 2, 0, 1].forEach((v, i) => {
       const r = c.tones[v % c.tones.length];
-      this.pluck(t + i * 0.045, A0 * r * Math.pow(2, 2 + (i > 2 ? 1 : 0)));
+      this.pluck(t + i * 0.045, A0 * r * Math.pow(2, 2 + (i > 2 ? 1 : 0)), 0.10, true);
     });
   }
 
   onWrong() {                         // quarter-tone cluster stab
-    if (!this.live) return;
+    if (!this.sfxLive) return;
+    if (this.ctx.state === "suspended") this.ctx.resume();
     const ctx = this.ctx, t = ctx.currentTime;
     const flt = ctx.createBiquadFilter();
     flt.type = "lowpass"; flt.Q.value = 6;
@@ -1869,7 +1947,7 @@ class HangmanMusic {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(0.16, t + 0.012);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
-    flt.connect(g).connect(this.duck);
+    flt.connect(g).connect(this.sfxGain);
     const base = A0 * 8 / 5;
     [base, base * QT, base * 11 / 8].forEach(f => {
       const o = ctx.createOscillator();
@@ -1880,17 +1958,19 @@ class HangmanMusic {
   }
 
   onWin() {                           // riser + harmonic-seventh chord
-    if (!this.live) return;
+    if (!this.sfxLive) return;
+    if (this.ctx.state === "suspended") this.ctx.resume();
     const t = this.ctx.currentTime;
-    this.riser(t, 0.9, true);
+    this.riser(t, 0.9, true, true);
     [1, 6 / 5, 3 / 2, 7 / 4, 2, 12 / 5].forEach((r, i) => {
-      this.pluck(t + i * 0.075, A0 * r * 2);
+      this.pluck(t + i * 0.075, A0 * r * 2, 0.10, true);
     });
-    this.pad(t + 0.5, [1, 5 / 4, 3 / 2, 7 / 4], 2.0);
+    this.pad(t + 0.5, [1, 5 / 4, 3 / 2, 7 / 4], 2.0, 0, 0.075, true);
   }
 
   onLose() {                          // sag down through four quarter tones
-    if (!this.live) return;
+    if (!this.sfxLive) return;
+    if (this.ctx.state === "suspended") this.ctx.resume();
     const ctx = this.ctx, t = ctx.currentTime;
     const flt = ctx.createBiquadFilter();
     flt.type = "lowpass"; flt.Q.value = 3;
@@ -1900,7 +1980,7 @@ class HangmanMusic {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(0.2, t + 0.03);
     g.gain.exponentialRampToValueAtTime(0.001, t + 1.4);
-    flt.connect(g).connect(this.duck);
+    flt.connect(g).connect(this.sfxGain);
     const f0 = A0 * 11 / 9;
     [["sawtooth", 0], ["square", -6]].forEach(([type, det]) => {
       const o = ctx.createOscillator();
@@ -1916,19 +1996,28 @@ class HangmanMusic {
 
 const music = new HangmanMusic();
 
-/* ---- wire the sidebar controls ---- */
+/* ---- wire the sidebar controls: music and sfx are separate channels ---- */
 const musicToggle = document.getElementById("musicToggle");
 const musicIcon = document.getElementById("musicIcon");
 const musicLabel = document.getElementById("musicLabel");
-const muteBtn = document.getElementById("muteBtn");
-const volumeEl = document.getElementById("volume");
-const volNumEl = document.getElementById("volNum");
+
+const musicMuteBtn = document.getElementById("musicMuteBtn");
+const musicVolumeEl = document.getElementById("musicVolume");
+const musicVolNumEl = document.getElementById("musicVolNum");
+
+const sfxMuteBtn = document.getElementById("sfxMuteBtn");
+const sfxVolumeEl = document.getElementById("sfxVolume");
+const sfxVolNumEl = document.getElementById("sfxVolNum");
 
 function paintAudioUI() {
-  volNumEl.textContent = Math.round(music.volume * 100);
-  const off = music.muted || music.volume === 0;
-  muteBtn.textContent = off ? "🔇" : "🔊";
-  muteBtn.classList.toggle("muted", music.muted);
+  musicVolNumEl.textContent = Math.round(music.musicVolume * 100) + "%";
+  musicMuteBtn.textContent = (music.musicMuted || music.musicVolume === 0) ? "🔇" : "🔊";
+  musicMuteBtn.classList.toggle("muted", music.musicMuted);
+
+  sfxVolNumEl.textContent = Math.round(music.sfxVolume * 100) + "%";
+  sfxMuteBtn.textContent = (music.sfxMuted || music.sfxVolume === 0) ? "🔇" : "🔊";
+  sfxMuteBtn.classList.toggle("muted", music.sfxMuted);
+
   musicToggle.classList.toggle("on", music.playing);
   musicToggle.setAttribute("aria-pressed", music.playing ? "true" : "false");
   musicIcon.textContent = music.playing ? "⏸" : "▶";
@@ -1938,17 +2027,30 @@ function paintAudioUI() {
 function saveAudio() {
   try {
     localStorage.setItem("hangman.music", music.playing ? "1" : "0");
-    localStorage.setItem("hangman.vol", String(music.volume));
-    localStorage.setItem("hangman.muted", music.muted ? "1" : "0");
+    localStorage.setItem("hangman.musicVol", String(music.musicVolume));
+    localStorage.setItem("hangman.musicMuted", music.musicMuted ? "1" : "0");
+    localStorage.setItem("hangman.sfxVol", String(music.sfxVolume));
+    localStorage.setItem("hangman.sfxMuted", music.sfxMuted ? "1" : "0");
   } catch (e) { /* ignore */ }
 }
 
 function loadAudio() {
   try {
-    const v = localStorage.getItem("hangman.vol");
-    if (v !== null) music.setVolume(Number(v));
-    music.setMuted(localStorage.getItem("hangman.muted") === "1");
-    volumeEl.value = Math.round(music.volume * 100);
+    // new per-channel keys, falling back to the old single-channel ones so
+    // an existing music preference carries over instead of resetting
+    const mv = localStorage.getItem("hangman.musicVol") ?? localStorage.getItem("hangman.vol");
+    if (mv !== null) music.setMusicVolume(Number(mv));
+    music.setMusicMuted(
+      (localStorage.getItem("hangman.musicMuted") ?? localStorage.getItem("hangman.muted")) === "1"
+    );
+
+    const sv = localStorage.getItem("hangman.sfxVol");
+    if (sv !== null) music.setSfxVolume(Number(sv));
+    music.setSfxMuted(localStorage.getItem("hangman.sfxMuted") === "1");
+
+    musicVolumeEl.value = Math.round(music.musicVolume * 100);
+    sfxVolumeEl.value = Math.round(music.sfxVolume * 100);
+
     // Browsers block audio until the user interacts, so a saved "on"
     // preference waits for the first click or keypress.
     if (localStorage.getItem("hangman.music") === "1") armAutoStart();
@@ -1972,14 +2074,29 @@ musicToggle.addEventListener("click", () => {
   paintAudioUI();
   saveAudio();
 });
-muteBtn.addEventListener("click", () => {
-  music.setMuted(!music.muted);
+musicMuteBtn.addEventListener("click", () => {
+  music.ensureAudio();
+  music.setMusicMuted(!music.musicMuted);
   paintAudioUI();
   saveAudio();
 });
-volumeEl.addEventListener("input", () => {
-  music.setVolume(Number(volumeEl.value) / 100);
-  if (music.volume > 0) music.setMuted(false);
+musicVolumeEl.addEventListener("input", () => {
+  music.ensureAudio();
+  music.setMusicVolume(Number(musicVolumeEl.value) / 100);
+  if (music.musicVolume > 0) music.setMusicMuted(false);
+  paintAudioUI();
+  saveAudio();
+});
+sfxMuteBtn.addEventListener("click", () => {
+  music.ensureAudio();
+  music.setSfxMuted(!music.sfxMuted);
+  paintAudioUI();
+  saveAudio();
+});
+sfxVolumeEl.addEventListener("input", () => {
+  music.ensureAudio();
+  music.setSfxVolume(Number(sfxVolumeEl.value) / 100);
+  if (music.sfxVolume > 0) music.setSfxMuted(false);
   paintAudioUI();
   saveAudio();
 });
@@ -2014,7 +2131,9 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
 (function primeAudioForTouch() {
   const prime = () => {
     document.removeEventListener("touchend", prime);
-    if (music.ctx && music.ctx.state === "suspended" && music.playing) music.ctx.resume();
+    if (music.ctx && music.ctx.state === "suspended" && (music.playing || !music.sfxMuted)) {
+      music.ctx.resume();
+    }
   };
   document.addEventListener("touchend", prime, { passive: true });
 })();
@@ -2029,11 +2148,13 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   }, { passive: false });
 })();
 
-// Pause the loop when the app is backgrounded so it doesn't drain battery.
+// Suspend the audio engine when the app is backgrounded so it doesn't drain
+// battery. On return, only auto-resume if music was actually playing — sound
+// effects re-arm themselves the next time one fires (see the sfxLive checks).
 document.addEventListener("visibilitychange", () => {
   if (!music.ctx) return;
   if (document.hidden) {
-    if (music.playing) music.ctx.suspend();
+    music.ctx.suspend();
   } else if (music.playing) {
     music.ctx.resume();
   }
