@@ -1,4 +1,4 @@
-# Hangman — 8-Bit
+# Hangbot — 8-Bit
 
 An offline-capable word game: 1800 words across 9 categories, a rescue-or-scrap
 robot, and an EDM soundtrack synthesized live in the browser (no audio files).
@@ -54,7 +54,7 @@ GitHub Pages, Vercel.
 Bump the cache name in `sw.js` so installed phones pick up the new version:
 
 ```js
-const CACHE = "hangman-v2";   // was v1
+const CACHE = "hangbot-v3";   // was v1
 ```
 
 Without this, phones keep serving the old cached copy.

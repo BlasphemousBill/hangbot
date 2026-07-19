@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Hangman</title>
-<meta name="description" content="8-bit neon hangman with 1800 words and a live EDM soundtrack.">
+<title>Hangbot</title>
+<meta name="description" content="Hangbot: 8-bit neon word game with 1800 words and a live EDM soundtrack.">
 <meta name="theme-color" content="#07060f">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon-32.png" sizes="32x32">
@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Hangman">
+<meta name="apple-mobile-web-app-title" content="Hangbot">
 <style>
   :root {
     --bg: #07060f;
@@ -567,7 +567,7 @@
       </g>
     </g>
   </svg>
-  <h1 id="title" aria-label="Hangman"></h1>
+  <h1 id="title" aria-label="Hangbot"></h1>
 </div>
 
 <div class="layout">
@@ -965,10 +965,12 @@ const GLYPHS = {
   A: ["01110","10001","10001","11111","10001","10001","10001"],
   N: ["10001","11001","10101","10011","10001","10001","10001"],
   G: ["01110","10001","10000","10111","10001","10001","01110"],
-  M: ["10001","11011","10101","10001","10001","10001","10001"]
+  B: ["11110","10001","10001","11110","10001","10001","11110"],
+  O: ["01110","10001","10001","10001","10001","10001","01110"],
+  T: ["11111","00100","00100","00100","00100","00100","00100"]
 };
 (function buildTitle() {
-  const word = "HANGMAN", W = 5, H = 7, GAP = 1;
+  const word = "HANGBOT", W = 5, H = 7, GAP = 1;
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("viewBox", `0 0 ${word.length * (W + GAP) - GAP} ${H}`);

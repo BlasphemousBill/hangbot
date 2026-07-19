@@ -1,19 +1,41 @@
 {
-  "name": "Hangman — 8-Bit",
-  "short_name": "Hangman",
-  "description": "8-bit neon hangman: 1800 words across 9 categories, a rescue-or-scrap robot, and a live-synthesized EDM soundtrack.",
+  "name": "Hangbot — 8-Bit",
+  "short_name": "Hangbot",
+  "description": "Hangbot: 8-bit neon word game. 1800 words across 9 categories, a rescue-or-scrap robot, and a live-synthesized EDM soundtrack.",
   "start_url": "./index.html",
   "scope": "./",
-  "id": "/hangman/",
+  "id": "/hangbot/",
   "display": "standalone",
-  "display_override": ["standalone", "fullscreen"],
+  "display_override": [
+    "standalone",
+    "fullscreen"
+  ],
   "orientation": "any",
   "background_color": "#07060f",
   "theme_color": "#07060f",
-  "categories": ["games", "word", "puzzle"],
+  "categories": [
+    "games",
+    "word",
+    "puzzle"
+  ],
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
