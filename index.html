@@ -658,14 +658,16 @@
        sitting higher instead of being centered as part of one tall group. */
     .center {
       display: grid;
-      /* all three tracks auto (content-sized) + justify-content:center
-         packs board/buttons/keyboard into one tightly, evenly-gapped
-         cluster and centers that cluster as a whole — a trailing 1fr
-         track would've let .botrow stretch wide and center its own
-         content inside itself, opening a bigger gap after the buttons
-         than the one before them. */
-      grid-template-columns: auto auto auto;
-      justify-content: center;
+      /* col 3 is 1fr (not auto) so it gets a real, definite width straight
+         from the grid algorithm — an "auto" column here sizes off its
+         content's own preferred width, but .keyboard can't supply one:
+         container-type below makes it a query container, which by spec
+         can't consult its own children (the button rows) to size itself,
+         so "auto" made it collapse toward 0 and every key fell back to
+         its bare content-minimum (~12px) instead of the ~44px it should
+         be. 1fr sidesteps the whole cycle. justify-content is dropped
+         since col 3 already spans to the row's far edge on its own. */
+      grid-template-columns: auto auto 1fr;
       align-items: stretch;
       column-gap: 16px;
       width: 100%;
@@ -679,21 +681,28 @@
        regardless of source order. */
     .playrow .stage { grid-column: 1; align-self: center; justify-self: unset; }
     .edge-right { grid-column: 2; align-self: center; }
+    /* align-items:flex-start (not center) — col 3 is a full 1fr-wide
+       track, and centering word/status/keyboard within it would open a
+       bigger gap after the buttons than the one before them. Hugging the
+       column's left edge keeps both gaps equal to column-gap instead. */
     .botrow {
       display: flex;
       flex-direction: column;
       grid-column: 3;
-      align-items: center;
+      align-items: flex-start;
       gap: 2px;
     }
-    .status { min-height: 0; }
-    /* button widths below are normally vw-based (a share of the whole
-       viewport), but here the keyboard only owns the right column, not
-       the full width — left at vw sizing the widest row (10 keys) ran
-       past the column's actual edge. container-type turns .keyboard into
-       its own measuring stick, so cqw below means "% of this column",
-       not "% of the screen", the same fix used for long words earlier. */
-    .keyboard { gap: 6px; container-type: inline-size; margin: auto 0; }
+    /* .word already has width:100% from the general rule; status and the
+       keyboard need it explicitly here so they span (and stay centered
+       within) the full column instead of shrinking to their own content
+       now that .botrow no longer centers them for it. */
+    .status { min-height: 0; width: 100%; }
+    .keyboard {
+      width: 100%;
+      gap: 6px;
+      container-type: inline-size;
+      margin: auto 0;
+    }
     .row { gap: 6px; }
     button.key {
       width: min(clamp(26px, 8vw, 44px), calc((100cqw - 9 * 6px) / 10));
